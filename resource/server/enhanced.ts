@@ -1,3 +1,4 @@
+import { every, type Job } from "@aicore-fivem/lib/server";
 import { createLogger } from "@aicore-fivem/lib/shared";
 import { ResourceName } from "common";
 import { VoiceChannel } from "./channel";
@@ -16,7 +17,7 @@ class Bucket {
  * - Proximity: per routing bucket one spatial channel per range; every player is in all of their bucket's channels and
  *   unmuted only in the one of their range, so they hear everyone and are heard at their own range.
  * - Radio: a 2D channel per frequency, members muted until push-to-talk. Calls: a 2D channel per call, unmuted.
- * FiveM has no routing bucket event, so a 1 s timer moves players whose bucket changed.
+ * FiveM has no routing bucket event, so a 1 s job moves players whose bucket changed.
  */
 export class EnhancedRouter implements Router {
   readonly backend = "enhanced";
@@ -25,11 +26,13 @@ export class EnhancedRouter implements Router {
   private readonly bucketOf = new Map<number, number>();
   private readonly radios = new Map<number, VoiceChannel>();
   private readonly calls = new Map<number, VoiceChannel>();
-  private readonly timer: ReturnType<typeof setInterval>;
+  private readonly timer: Job;
 
   /** `modeDistances`: the panel's ranges, whose channels stay while empty. */
   constructor(private readonly modeDistances: () => readonly number[]) {
-    this.timer = setInterval(() => this.watchBuckets(), 1000);
+    this.timer = every(1000, () => this.watchBuckets(), {
+      name: "voiceBuckets",
+    });
   }
 
   join(talker: Talker): void {
@@ -118,7 +121,7 @@ export class EnhancedRouter implements Router {
   }
 
   stop(): void {
-    clearInterval(this.timer);
+    this.timer.stop();
     for (const bucket of this.buckets.values())
       for (const channel of bucket.channels.values()) channel.destroy();
     for (const channel of this.radios.values()) channel.destroy();

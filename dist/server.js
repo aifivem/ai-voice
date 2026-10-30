@@ -93,6 +93,13 @@ var FileViews = class {
 		parsed === null ? this.map.delete(key) : this.map.set(key, parsed);
 	}
 };
+// ../../../packages/lib/src/shared/lang.ts
+function formatText(template, args) {
+	return template.replace(/\{(\d+)\}/g, (match, index) => {
+		let value = args[Number(index)];
+		return value === void 0 ? match : String(value);
+	});
+}
 // ../../../packages/lib/src/shared/index.ts
 function isRecord(value) {
 	return typeof value == "object" && !!value && !Array.isArray(value);
@@ -130,12 +137,6 @@ function previewJson(value, max) {
 		out += "}";
 	};
 	return walk(value, 0), out.slice(0, max);
-}
-function formatText(template, args) {
-	return template.replace(/\{(\d+)\}/g, (match, index) => {
-		let value = args[Number(index)];
-		return value === void 0 ? match : String(value);
-	});
 }
 const asArgs = (value) => value === null ? null : [value];
 function createLogger(resource) {
@@ -225,6 +226,10 @@ const CORE = {
 	clientNotifyEvent: "ai-core:client:notify",
 	spawnEvent: "ai-core:client:spawn",
 	openCharactersEvent: "ai-core:client:openCharacters"
+}, PLAYER_BAGS = {
+	dead: "dead",
+	cuffed: "cuffed",
+	proximity: "proximity"
 }, ADMIN = {
 	ace: "ai.admin",
 	openCallback: "ai-core:admin:open",
@@ -287,7 +292,7 @@ function entityCoords(entity) {
 }
 const coordsOf = (source) => entityCoords(GetPlayerPed(String(source)));
 resourceExport(CORE.resource);
-const log$11 = createLogger(GetCurrentResourceName()), gates = new Set();
+const log$12 = createLogger(GetCurrentResourceName()), gates = new Set();
 on("playerDropped", () => {
 	let source = Number(globalThis.source);
 	for (let gate of gates) gate.release(source);
@@ -328,11 +333,11 @@ var ClientGate = class {
 		this.refusals.set(source, {
 			at: now,
 			skipped: 0
-		}), log$11.warn(`${this.name} refused for ${GetPlayerName(String(source))} (${source}): ${typeof reason == "string" ? reason : reason()}${more}`);
+		}), log$12.warn(`${this.name} refused for ${GetPlayerName(String(source))} (${source}): ${typeof reason == "string" ? reason : reason()}${more}`);
 	}
 };
 // ../../../packages/lib/src/server/callback.ts
-const log$10 = createLogger(GetCurrentResourceName()), resource$1 = GetCurrentResourceName(), REFUSED = Symbol("refused");
+const log$11 = createLogger(GetCurrentResourceName()), resource$1 = GetCurrentResourceName(), REFUSED = Symbol("refused");
 function onClientCallback(name, first, second) {
 	let [handler, options] = typeof first == "function" ? [first, second ?? {}] : [second, first], gate = new ClientGate(name, options, 20);
 	onNet(requestEvent(name), async (caller, id, ...raw) => {
@@ -344,7 +349,7 @@ function onClientCallback(name, first, second) {
 			let result = await gate.run(source, REFUSED, () => handler(source, ...args));
 			result === REFUSED ? emitNet(responseEvent(caller), source, id, !1, null) : emitNet(responseEvent(caller), source, id, !0, result ?? null);
 		} catch (error) {
-			log$10.error(`callback ${name} failed for ${source}`, error), emitNet(responseEvent(caller), source, id, !1, null);
+			log$11.error(`callback ${name} failed for ${source}`, error), emitNet(responseEvent(caller), source, id, !1, null);
 		}
 	});
 }
@@ -475,6 +480,68 @@ function validate(spec, value, path) {
 			return null;
 		default: return spec;
 	}
+}
+// ../../../packages/lib/src/server/admin/edit.ts
+const DEFAULT_KEY = "^[a-z0-9_]{2,32}$";
+function imported(spec, value) {
+	let base = clone(spec.newRecord ?? {}), out = {};
+	for (let name of Object.keys(spec.sections)) {
+		let v = name in value ? value[name] : base[name];
+		v !== void 0 && (out[name] = clone(v));
+	}
+	return out;
+}
+function linked(spec, value, ctx) {
+	return spec.type === "text" && spec.records && typeof value == "string" && value !== "" && !(value in ctx.get(spec.records)) ? "ADMIN_ERR_LOOKUP" : null;
+}
+function checkEdit(patch, spec, ctx) {
+	let data = ctx.get(patch.file);
+	if (patch.action === "create") return spec.kind !== "records" || !new RegExp(spec.keyPattern ?? DEFAULT_KEY).test(patch.key) ? ERR.pattern : patch.key in data ? "ADMIN_ERR_EXISTS" : null;
+	if (patch.action === "delete") return spec.kind !== "records" || !(patch.key in data) ? ERR.type : spec.locked?.includes(patch.key) ? "ADMIN_ERR_LOCKED" : null;
+	if (patch.action === "import") {
+		if (spec.kind !== "records") return ERR.type;
+		let pattern = new RegExp(spec.keyPattern ?? DEFAULT_KEY);
+		for (let [key, value] of Object.entries(patch.records)) {
+			if (!pattern.test(key)) return ERR.pattern;
+			let record = imported(spec, value);
+			for (let [name, section] of Object.entries(spec.sections)) {
+				let refusal = validate(section, record[name], name);
+				if (refusal) return refusal.error;
+				let link = linked(section, record[name], ctx);
+				if (link) return link;
+			}
+			let ruled = ctx.rule(patch.file)?.(key, record);
+			if (ruled) return ruled;
+		}
+		return null;
+	}
+	let section = spec.sections[patch.section];
+	if (!section || spec.kind === "records" && (!patch.key || !(patch.key in data))) return ERR.type;
+	let refusal = validate(section, patch.value, patch.section);
+	if (refusal) return refusal.error;
+	let link = linked(section, patch.value, ctx);
+	if (link) return link;
+	let current = spec.kind === "records" ? data[patch.key ?? ""] : data, next = {
+		...isRecord(current) ? current : {},
+		[patch.section]: patch.value
+	};
+	return ctx.rule(patch.file)?.(patch.key, next) ?? null;
+}
+function applyEdit(data, patch, spec) {
+	if (patch.action === "import") {
+		for (let [key, value] of Object.entries(patch.records)) data[key] = imported(spec, value);
+		return Object.keys(patch.records);
+	}
+	if (patch.action === "create") {
+		let record = clone(spec.newRecord ?? {});
+		spec.labelPath && (record[spec.labelPath] = patch.label), data[patch.key] = record;
+	} else if (patch.action === "delete") delete data[patch.key];
+	else {
+		let target = spec.kind === "records" ? data[patch.key ?? ""] : data;
+		if (!isRecord(target)) return [];
+		patch.value === void 0 || patch.value === null ? delete target[patch.section] : target[patch.section] = clone(patch.value);
+	}
+	return [spec.kind === "records" ? patch.key : void 0];
 }
 // ../../../packages/lib/src/server/admin/jsonSchema.ts
 const SCHEMA_KEY = {
@@ -612,15 +679,7 @@ function writeSchema(resource, name, text, log) {
 	(0, node_fs_promises.mkdir)(dir, { recursive: !0 }).then(() => (0, node_fs_promises.writeFile)(`${dir}/${name}.schema.json`, text, "utf8")).catch((error) => log.error(`writing ${resource}/${path} failed`, error));
 }
 // ../../../packages/lib/src/server/admin/panel.ts
-const core$13 = resourceExport(CORE.resource), DEFAULT_KEY = "^[a-z0-9_]{2,32}$";
-function imported(spec, value) {
-	let base = clone(spec.newRecord ?? {}), out = {};
-	for (let name of Object.keys(spec.sections)) {
-		let v = name in value ? value[name] : base[name];
-		v !== void 0 && (out[name] = clone(v));
-	}
-	return out;
-}
+const core$13 = resourceExport(CORE.resource);
 var AdminPanel = class {
 	schema;
 	data = new Map();
@@ -677,7 +736,10 @@ var AdminPanel = class {
 				ok: !1,
 				error: ERR.type
 			};
-			let error = this.check(patch, spec);
+			let error = checkEdit(patch, spec, {
+				get: (file) => this.get(file),
+				rule: (file) => this.rules.get(file)
+			});
 			return error ? (this.log.warn(`admin ${admin} edit refused (${error}): ${previewJson(patch, 300)}`), {
 				ok: !1,
 				error
@@ -712,59 +774,12 @@ var AdminPanel = class {
 	commitAfter(file, key, value) {
 		setImmediate(() => this.commit(file, key, value));
 	}
-	linked(spec, value) {
-		return spec.type === "text" && spec.records && typeof value == "string" && value !== "" && !(value in this.get(spec.records)) ? "ADMIN_ERR_LOOKUP" : null;
-	}
-	check(patch, spec) {
-		let data = this.get(patch.file);
-		if (patch.action === "create") return spec.kind !== "records" || !new RegExp(spec.keyPattern ?? DEFAULT_KEY).test(patch.key) ? ERR.pattern : patch.key in data ? "ADMIN_ERR_EXISTS" : null;
-		if (patch.action === "delete") return spec.kind !== "records" || !(patch.key in data) ? ERR.type : spec.locked?.includes(patch.key) ? "ADMIN_ERR_LOCKED" : null;
-		if (patch.action === "import") {
-			if (spec.kind !== "records") return ERR.type;
-			let pattern = new RegExp(spec.keyPattern ?? DEFAULT_KEY);
-			for (let [key, value] of Object.entries(patch.records)) {
-				if (!pattern.test(key)) return ERR.pattern;
-				let record = imported(spec, value);
-				for (let [name, section] of Object.entries(spec.sections)) {
-					let refusal = validate(section, record[name], name);
-					if (refusal) return refusal.error;
-					let link = this.linked(section, record[name]);
-					if (link) return link;
-				}
-				let ruled = this.rules.get(patch.file)?.(key, record);
-				if (ruled) return ruled;
-			}
-			return null;
-		}
-		let section = spec.sections[patch.section];
-		if (!section || spec.kind === "records" && (!patch.key || !(patch.key in data))) return ERR.type;
-		let refusal = validate(section, patch.value, patch.section);
-		if (refusal) return refusal.error;
-		let link = this.linked(section, patch.value);
-		if (link) return link;
-		let current = spec.kind === "records" ? data[patch.key ?? ""] : data, next = {
-			...isRecord(current) ? current : {},
-			[patch.section]: patch.value
-		};
-		return this.rules.get(patch.file)?.(patch.key, next) ?? null;
-	}
 	store(patch, spec) {
-		let data = this.data.get(patch.file) ?? {};
-		if (patch.action === "create") {
-			let record = clone(spec.newRecord ?? {});
-			spec.labelPath && (record[spec.labelPath] = patch.label), data[patch.key] = record;
-		} else if (patch.action === "delete") delete data[patch.key];
-		else if (patch.action === "import") {
-			for (let [key, value] of Object.entries(patch.records)) data[key] = imported(spec, value);
+		let data = this.data.get(patch.file) ?? {}, keys = applyEdit(data, patch, spec);
+		if (keys.length !== 0) {
 			this.data.set(patch.file, data);
-			for (let key of Object.keys(patch.records)) this.changed(patch.file, key);
-			return;
-		} else {
-			let target = spec.kind === "records" ? data[patch.key ?? ""] : data;
-			if (!isRecord(target)) return;
-			patch.value === void 0 || patch.value === null ? delete target[patch.section] : target[patch.section] = clone(patch.value);
+			for (let key of keys) this.changed(patch.file, key);
 		}
-		this.data.set(patch.file, data), this.changed(patch.file, spec.kind === "records" ? patch.key : void 0);
 	}
 	changed(file, key) {
 		let spec = this.schema.files[file], data = this.get(file), value = key === void 0 ? data : data[key] ?? null;
@@ -810,42 +825,65 @@ function notify(source, text, kind = "info", duration) {
 resourceExport(CORE.resource);
 // ../../../packages/lib/src/server/online.ts
 const core$11 = resourceExport(CORE.resource);
+function reindex(index, source, before, after) {
+	for (let name of before) {
+		let set = index.get(name);
+		set && (set.delete(source), set.size === 0 && index.delete(name));
+	}
+	for (let name of after) {
+		let set = index.get(name);
+		set || index.set(name, set = new Set()), set.add(source);
+	}
+}
 var OnlinePlayers = class {
 	players = new Map();
 	onDuty = new Map();
+	jobIndex = new Map();
+	gangIndex = new Map();
 	started = !1;
 	start() {
 		if (this.started) return;
 		this.started = !0;
 		let load = (source, character) => {
-			this.put(source, character, (core$11.GetJobs(source) ?? []).map((m) => m.job), (core$11.GetGangs(source) ?? []).map((m) => m.gang)), this.setDuty(source, core$11.GetDutyJob(source));
+			this.drop(source), this.players.set(source, {
+				character,
+				jobs: [],
+				jobNames: [],
+				gangs: [],
+				gangNames: [],
+				duty: null
+			}), this.setJobs(source, core$11.GetJobs(source) ?? []), this.setGangs(source, core$11.GetGangs(source) ?? []), this.setDuty(source, core$11.GetDutyJob(source));
 		};
-		on(CORE.playerLoadedEvent, load), on(CORE.playerUnloadedEvent, (source) => this.drop(source)), on(CORE.jobsChangedEvent, (source, jobs) => {
-			let player = this.players.get(source);
-			player && (player.jobs = jobs.map((m) => m.job));
-		}), on(CORE.gangsChangedEvent, (source, gangs) => {
-			let player = this.players.get(source);
-			player && (player.gangs = gangs.map((m) => m.gang));
-		}), on(CORE.dutyChangedEvent, (source, job) => this.setDuty(source, job));
+		on(CORE.playerLoadedEvent, load), on(CORE.playerUnloadedEvent, (source) => this.drop(source)), on(CORE.jobsChangedEvent, (source, jobs) => this.setJobs(source, jobs)), on(CORE.gangsChangedEvent, (source, gangs) => this.setGangs(source, gangs)), on(CORE.dutyChangedEvent, (source, job) => this.setDuty(source, job));
 		for (let source of core$11.GetLoadedSources()) {
 			let character = core$11.GetCharacter(source);
 			character && load(source, character);
 		}
 	}
-	put(source, character, jobs, gangs) {
-		this.drop(source), this.players.set(source, {
-			character,
-			jobs,
-			gangs,
-			duty: null
-		});
-	}
 	drop(source) {
-		this.setDuty(source, null), this.players.delete(source);
+		let player = this.players.get(source);
+		player && (this.setDuty(source, null), reindex(this.jobIndex, source, player.jobNames, []), reindex(this.gangIndex, source, player.gangNames, []), this.players.delete(source));
+	}
+	setJobs(source, jobs) {
+		let player = this.players.get(source);
+		if (!player) return;
+		let names = jobs.map((m) => m.job);
+		reindex(this.jobIndex, source, player.jobNames, names), player.jobs = jobs, player.jobNames = names;
+	}
+	setGangs(source, gangs) {
+		let player = this.players.get(source);
+		if (!player) return;
+		let names = gangs.map((m) => m.gang);
+		reindex(this.gangIndex, source, player.gangNames, names), player.gangs = gangs, player.gangNames = names;
 	}
 	setDuty(source, job) {
 		let player = this.players.get(source);
-		if (!player || (player.duty && this.onDuty.get(player.duty)?.delete(source), player.duty = job, !job)) return;
+		if (!player) return;
+		if (player.duty) {
+			let set = this.onDuty.get(player.duty);
+			set?.delete(source), set?.size === 0 && this.onDuty.delete(player.duty);
+		}
+		if (player.duty = job, !job) return;
 		let set = this.onDuty.get(job);
 		set || this.onDuty.set(job, set = new Set()), set.add(source);
 	}
@@ -859,13 +897,35 @@ var OnlinePlayers = class {
 		return this.start(), this.players.get(source)?.character ?? null;
 	}
 	jobs(source) {
-		return this.start(), this.players.get(source)?.jobs ?? [];
+		return this.start(), this.players.get(source)?.jobNames ?? [];
 	}
 	gangs(source) {
-		return this.start(), this.players.get(source)?.gangs ?? [];
+		return this.start(), this.players.get(source)?.gangNames ?? [];
+	}
+	jobGrade(source, job) {
+		return this.start(), this.players.get(source)?.jobs.find((m) => m.job === job)?.grade ?? null;
+	}
+	gangGrade(source, gang) {
+		return this.start(), this.players.get(source)?.gangs.find((m) => m.gang === gang)?.grade ?? null;
+	}
+	jobMembers(job) {
+		return this.start(), this.jobIndex.get(job) ?? EMPTY;
+	}
+	gangMembers(gang) {
+		return this.start(), this.gangIndex.get(gang) ?? EMPTY;
 	}
 	dutyJob(source) {
 		return this.start(), this.players.get(source)?.duty ?? null;
+	}
+	onDutyIn(source, jobs) {
+		let duty = this.dutyJob(source);
+		return duty !== null && jobs.includes(duty);
+	}
+	countOnDuty(jobs) {
+		this.start();
+		let count = 0;
+		for (let job of jobs) count += this.onDuty.get(job)?.size ?? 0;
+		return count;
 	}
 	onDutyFor(job) {
 		return this.start(), this.onDuty.get(job) ?? EMPTY;
@@ -888,11 +948,11 @@ function playersNear(source, radius) {
 }
 createLogger(GetCurrentResourceName());
 // ../../../packages/lib/src/server/command.ts
-const resource = GetCurrentResourceName(), log$8 = createLogger(resource);
+const resource = GetCurrentResourceName(), log$9 = createLogger(resource);
 let texts = null;
 const t = (key, ...args) => formatText((texts ??= loadLocaleTexts(CORE.resource))[key] ?? key, args);
 function reply(source, text, kind) {
-	source > 0 ? notify(source, text, kind) : log$8.info(text);
+	source > 0 ? notify(source, text, kind) : log$9.info(text);
 }
 var Command = class {
 	params;
@@ -927,7 +987,7 @@ var Command = class {
 		if (!this.allowed(source, name)) return reply(source, t("COMMAND_NOT_ALLOWED"), "error");
 		let args = this.parse(raw);
 		if (typeof args == "string") return reply(source, args, "error"), reply(source, t("COMMAND_USAGE", this.usage), "info");
-		let fail = (error) => log$8.error(`command /${name} failed`, error);
+		let fail = (error) => log$9.error(`command /${name} failed`, error);
 		try {
 			let result = this.handler(source, args, line);
 			result instanceof Promise && result.catch(fail);
@@ -988,15 +1048,133 @@ function addCommand(name, options, handler) {
 	commands.add(command);
 }
 // ../../../packages/lib/src/server/netEvent.ts
-const log$7 = createLogger(GetCurrentResourceName());
+const log$8 = createLogger(GetCurrentResourceName());
 function onClientEvent(name, first, second) {
 	let [handler, options] = typeof first == "function" ? [first, second ?? {}] : [second, first], gate = new ClientGate(name, options, 10);
 	onNet(name, (...raw) => {
 		let source = Number(globalThis.source), args = gate.check(source, raw);
-		args && gate.run(source, void 0, () => handler(source, ...args)).catch((error) => log$7.error(`event ${name} failed for ${source}`, error));
+		args && gate.run(source, void 0, () => handler(source, ...args)).catch((error) => log$8.error(`event ${name} failed for ${source}`, error));
 	});
 }
 createLogger("aicore-lib");
+let log$6 = null;
+var ScheduledJob = class {
+	interval;
+	fn;
+	name;
+	gen = 0;
+	active = !1;
+	stopped = !1;
+	quietUntil = 0;
+	skipped = 0;
+	constructor(interval, fn, name) {
+		this.interval = interval, this.fn = fn, this.name = name;
+	}
+	get running() {
+		return this.active;
+	}
+	set(active) {
+		active === this.active || active && this.stopped || (this.active = active, active ? scheduler.activate(this) : scheduler.deactivate(this));
+	}
+	stop() {
+		this.set(!1), this.stopped = !0;
+	}
+	call() {
+		try {
+			let result = this.fn();
+			result instanceof Promise && result.catch((error) => this.fail(error));
+		} catch (error) {
+			this.fail(error);
+		}
+	}
+	fail(error) {
+		let now = GetGameTimer();
+		if (now < this.quietUntil) {
+			this.skipped++;
+			return;
+		}
+		this.quietUntil = now + 1e4;
+		let more = this.skipped ? ` (+${this.skipped} more)` : "";
+		this.skipped = 0, log$6 ??= createLogger(GetCurrentResourceName()), log$6.error(`job "${this.name}" failed${more}`, error instanceof Error ? error.stack ?? error.message : error);
+	}
+}, Group = class {
+	interval;
+	jobs = Array(8);
+	gens = Array(8).fill(0);
+	dues = Array(8).fill(0);
+	head = 0;
+	mask = 7;
+	count = 0;
+	constructor(interval) {
+		this.interval = interval;
+	}
+	get front() {
+		return this.dues[this.head] ?? 0;
+	}
+	push(job, due) {
+		this.count > this.mask && this.grow();
+		let i = this.head + this.count & this.mask;
+		this.jobs[i] = job, this.gens[i] = job.gen, this.dues[i] = due, this.count++;
+	}
+	run(now) {
+		for (let left = this.count; left > 0 && this.count > 0; left--) {
+			let i = this.head, due = this.dues[i] ?? 0;
+			if (due > now) return;
+			let job = this.jobs[i], gen = this.gens[i];
+			if (this.jobs[i] = void 0, this.head = i + 1 & this.mask, this.count--, !job || job.gen !== gen) continue;
+			let next = due + this.interval;
+			next <= now && (next = now + this.interval), this.push(job, next), job.call();
+		}
+	}
+	grow() {
+		let size = (this.mask + 1) * 2, jobs = Array(size), gens = Array(size).fill(0), dues = Array(size).fill(0);
+		for (let n = 0; n < this.count; n++) {
+			let i = this.head + n & this.mask;
+			jobs[n] = this.jobs[i], gens[n] = this.gens[i] ?? 0, dues[n] = this.dues[i] ?? 0;
+		}
+		this.jobs = jobs, this.gens = gens, this.dues = dues, this.head = 0, this.mask = size - 1;
+	}
+};
+const scheduler = new class {
+	groups = [];
+	byInterval = new Map();
+	tick = null;
+	active = 0;
+	nextDue = Infinity;
+	running = !1;
+	activate(job) {
+		job.gen++, this.active++;
+		let due = GetGameTimer() + job.interval, group = this.byInterval.get(job.interval);
+		group || (group = new Group(job.interval), this.byInterval.set(job.interval, group), this.groups.push(group)), group.push(job, due), due < this.nextDue && (this.nextDue = due), this.tick ??= setTick(this.onTick);
+	}
+	deactivate(job) {
+		job.gen++, this.active--, this.active === 0 && !this.running && this.halt();
+	}
+	halt() {
+		this.tick !== null && clearTick(this.tick), this.tick = null, this.groups.length = 0, this.byInterval.clear(), this.nextDue = Infinity;
+	}
+	onTick = () => {
+		let now = GetGameTimer();
+		if (now < this.nextDue) return;
+		let groups = this.groups;
+		this.running = !0;
+		for (let i = 0; i < groups.length; i++) {
+			let group = groups[i];
+			group && group.count > 0 && group.front <= now && group.run(now);
+		}
+		if (this.running = !1, this.active === 0) return this.halt();
+		let soonest = Infinity, kept = 0;
+		for (let i = 0; i < groups.length; i++) {
+			let group = groups[i];
+			group && (group.count === 0 ? this.byInterval.delete(group.interval) : (groups[kept++] = group, group.front < soonest && (soonest = group.front)));
+		}
+		groups.length = kept, this.nextDue = soonest;
+	};
+}();
+function every(ms, fn, options = {}) {
+	let job = new ScheduledJob(Math.max(0, Math.floor(ms)), fn, options.name ?? (fn.name || "anonymous"));
+	return options.active !== !1 && job.set(!0), job;
+}
 // ../../../packages/lib/src/fivem/state.ts
 const stateNumber = (v) => typeof v == "number" && Number.isFinite(v) ? v : void 0, stateBoolean = (v) => typeof v == "boolean" ? v : void 0, stateString = (v) => typeof v == "string" ? v : void 0, isServer = IsDuplicityVersion();
 var Mirror = class {
@@ -1098,7 +1276,6 @@ const EVENTS = {
 }, KEYS = {
 	backend: "ai-voice:backend",
 	takeover: "ai-voice:takeover",
-	proximity: "proximity",
 	radioChannel: "radioChannel",
 	callChannel: "callChannel",
 	muted: "muted",
@@ -1935,9 +2112,7 @@ const checks = new class {
 	}
 	jobAllows(source, channel) {
 		let rule = content.frequencyOf(channel);
-		if (!rule || rule.jobs.length === 0) return !0;
-		let duty = online.dutyJob(source);
-		return rule.onDuty ? duty !== null && rule.jobs.includes(duty) : online.jobs(source).some((job) => rule.jobs.includes(job));
+		return !rule || rule.jobs.length === 0 ? !0 : rule.onDuty ? online.onDutyIn(source, rule.jobs) : online.jobs(source).some((job) => rule.jobs.includes(job));
 	}
 	canSetRange(source, index, distance) {
 		return this.modes.values().every((fn) => ask(fn, source, index, distance) !== !1);
@@ -2056,7 +2231,7 @@ var Bucket = class {
 	calls = new Map();
 	timer;
 	constructor(modeDistances) {
-		this.modeDistances = modeDistances, this.timer = setInterval(() => this.watchBuckets(), 1e3);
+		this.modeDistances = modeDistances, this.timer = every(1e3, () => this.watchBuckets(), { name: "voiceBuckets" });
 	}
 	join(talker) {
 		let bucketId = GetPlayerRoutingBucket(String(talker.source));
@@ -2117,7 +2292,7 @@ var Bucket = class {
 		for (let talker of talkers) this.join(talker);
 	}
 	stop() {
-		clearInterval(this.timer);
+		this.timer.stop();
 		for (let bucket of this.buckets.values()) for (let channel of bucket.channels.values()) channel.destroy();
 		for (let channel of this.radios.values()) channel.destroy();
 		for (let channel of this.calls.values()) channel.destroy();
@@ -2252,7 +2427,7 @@ function registerServerExports(s) {
 	});
 }
 // resource/server/players.ts
-const proximityBag = new PlayerState(KEYS.proximity, parseProximity), radioBag = new PlayerState(KEYS.radioChannel, stateNumber), callBag = new PlayerState(KEYS.callChannel, stateNumber), mutedBag = new PlayerState(KEYS.muted, stateBoolean), speakerBag = new PlayerState(KEYS.callSpeaker, stateBoolean);
+const proximityBag = new PlayerState(PLAYER_BAGS.proximity, parseProximity), radioBag = new PlayerState(KEYS.radioChannel, stateNumber), callBag = new PlayerState(KEYS.callChannel, stateNumber), mutedBag = new PlayerState(KEYS.muted, stateBoolean), speakerBag = new PlayerState(KEYS.callSpeaker, stateBoolean);
 var VoicePlayer = class {
 	source;
 	mode;
@@ -2515,7 +2690,10 @@ var Speakers = class {
 	router;
 	holders = new Map();
 	sent = new Map();
-	timer = null;
+	timer = every(1e3, () => this.update(), {
+		active: !1,
+		name: "speakers"
+	});
 	constructor(players, groups, router) {
 		this.players = players, this.groups = groups, this.router = router, groups.onCallChange((source) => {
 			this.holders.has(source) && this.set(source, !1);
@@ -2529,7 +2707,7 @@ var Speakers = class {
 		return !player || on && (!content.settings.speaker || player.call === 0) ? !1 : (on === this.holders.has(source) || (player.speaker = on, speakerBag.set(source, on), on ? this.holders.set(source, {
 			call: player.call,
 			near: new Set()
-		}) : (this.place(source, new Set()), this.holders.delete(source)), this.update(), this.holders.size > 0 ? this.timer ??= setInterval(() => this.update(), 1e3) : this.timer &&= (clearInterval(this.timer), null)), !0);
+		}) : (this.place(source, new Set()), this.holders.delete(source)), this.update(), this.timer.set(this.holders.size > 0)), !0);
 	}
 	drop(source) {
 		this.holders.has(source) && this.set(source, !1);

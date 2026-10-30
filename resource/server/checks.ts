@@ -91,9 +91,8 @@ class Checks {
   jobAllows(source: number, channel: number): boolean {
     const rule = content.frequencyOf(channel);
     if (!rule || rule.jobs.length === 0) return true;
-    const duty = online.dutyJob(source);
     return rule.onDuty
-      ? duty !== null && rule.jobs.includes(duty)
+      ? online.onDutyIn(source, rule.jobs)
       : online.jobs(source).some((job) => rule.jobs.includes(job));
   }
 

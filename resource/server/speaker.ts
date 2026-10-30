@@ -1,4 +1,4 @@
-import { playersNear } from "@aicore-fivem/lib/server";
+import { every, playersNear } from "@aicore-fivem/lib/server";
 import { EVENTS } from "common";
 import { content } from "./content";
 import type { Groups } from "./groups";
@@ -23,14 +23,17 @@ interface Holder {
 
 /**
  * Phone loudspeakers: players near a phone with the speaker on hear the other side of the call (and, two-way, are
- * heard by it). A 1 s timer runs only while a speaker is on. Enhanced puts the bystanders into the call's channel;
+ * heard by it). A 1 s job runs only while a speaker is on. Enhanced puts the bystanders into the call's channel;
  * Mumble clients get their extra send / hear sets (`EVENTS.callAudio`), only when a set changed.
  */
 export class Speakers {
   private readonly holders = new Map<number, Holder>();
   /** Per client: the audio last sent (Mumble). */
   private readonly sent = new Map<number, string>();
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private readonly timer = every(1000, () => this.update(), {
+    active: false,
+    name: "speakers",
+  });
 
   constructor(
     private readonly players: Players,
@@ -61,12 +64,7 @@ export class Speakers {
       this.holders.delete(source);
     }
     this.update();
-    if (this.holders.size > 0)
-      this.timer ??= setInterval(() => this.update(), 1000);
-    else if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
+    this.timer.set(this.holders.size > 0);
     return true;
   }
 

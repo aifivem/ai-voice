@@ -41,12 +41,11 @@ export const PMA = {
   registerCustomSubmixes: "pma-voice:registerCustomSubmixes",
 } as const;
 
-/** State bag keys: pma-voice's player keys and ai-voice's own. */
+/** State bag keys: pma-voice's player keys and ai-voice's own (`proximity` is `PLAYER_BAGS.proximity` in @aicore-fivem/shared). */
 export const KEYS = {
   backend: "ai-voice:backend",
   /** Scripts that bring their own radio / phone effect (`Takeover`). */
   takeover: "ai-voice:takeover",
-  proximity: "proximity",
   radioChannel: "radioChannel",
   callChannel: "callChannel",
   muted: "muted",

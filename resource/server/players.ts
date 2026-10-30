@@ -3,6 +3,7 @@ import {
   stateBoolean,
   stateNumber,
 } from "@aicore-fivem/lib/server";
+import { PLAYER_BAGS } from "@aicore-fivem/shared";
 import {
   CUSTOM_MODE,
   KEYS,
@@ -14,7 +15,7 @@ import { checks } from "./checks";
 import { content } from "./content";
 import type { Router, Talker } from "./router";
 
-export const proximityBag = new PlayerState(KEYS.proximity, parseProximity);
+export const proximityBag = new PlayerState(PLAYER_BAGS.proximity, parseProximity);
 export const radioBag = new PlayerState(KEYS.radioChannel, stateNumber);
 export const callBag = new PlayerState(KEYS.callChannel, stateNumber);
 export const mutedBag = new PlayerState(KEYS.muted, stateBoolean);

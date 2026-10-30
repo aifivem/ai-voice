@@ -1,4 +1,4 @@
-import { cache } from "@aicore-fivem/lib/client";
+import { cache, every } from "@aicore-fivem/lib/client";
 import { waitFor } from "@aicore-fivem/lib/shared";
 import { log, proximityBag, state } from "./state";
 
@@ -39,7 +39,7 @@ class MumbleVoice {
     this.started = true;
     on("mumbleConnected", () => void this.joinOwnChannel());
     if (MumbleIsConnected()) void this.joinOwnChannel();
-    setInterval(() => this.tick(), 200);
+    every(200, () => this.tick(), { name: "mumble" });
     on("onClientResourceStop", (resource: string) => {
       // A check from a stopped resource would throw on every tick.
       if (resource === this.checkOwner) this.resetCheck();
