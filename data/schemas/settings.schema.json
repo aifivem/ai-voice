@@ -52,6 +52,12 @@
       "description": "Players can change their range: Off keeps everyone at the starting range (scripts can still change it).",
       "type": "boolean"
     },
+    "rangeFactor": {
+      "description": "Mumble reach factor: FiveM Legacy only: players within the range times this number receive the voice (Mumble's native audio fades out over a longer distance than the range). 3 is pma-voice's value.",
+      "type": "number",
+      "minimum": 1,
+      "maximum": 5
+    },
     "radio": {
       "description": "Radio on",
       "type": "boolean"
@@ -62,16 +68,49 @@
       "minimum": 0,
       "maximum": 100
     },
+    "maxRadioChannels": {
+      "description": "Frequencies at once: How many frequencies a player can listen to at the same time; they talk on one of them.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10
+    },
     "radioAnim": {
-      "description": "Radio animation: The character holds the radio to the shoulder while talking.",
+      "description": "Radio animation on: Off: no animation on any frequency. Scripts can also turn it off for one player.",
       "type": "boolean"
+    },
+    "radioAnimSet": {
+      "description": "Animation: Used on every frequency without its own animation.",
+      "enum": [
+        "shoulder",
+        "chatter",
+        "handheld",
+        "custom"
+      ]
+    },
+    "radioAnimDict": {
+      "description": "Animation dictionary",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "radioAnimClip": {
+      "description": "Animation name",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "radioAnimFlag": {
+      "description": "Animation flag: TaskPlayAnim flag: 49 = upper body, loops, can walk; 50 = upper body, holds the last frame, can walk.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1023
     },
     "radioAnimInVehicle": {
       "description": "Radio animation in vehicles",
       "type": "boolean"
     },
     "radioSubmix": {
-      "description": "Radio sound effect: Filters the voice like a speaker. On FiveM Enhanced this needs setr sv_mumble true.",
+      "description": "Radio sound effect: Filters the voice like a speaker. The game has a small fixed number of sound effects and cannot remove one: switching this off stops using the effect, players free its slot only by restarting the game. On FiveM Enhanced this needs setr sv_mumble true.",
       "type": "boolean"
     },
     "micClicks": {
@@ -93,8 +132,49 @@
       "maximum": 100
     },
     "phoneSubmix": {
-      "description": "Phone sound effect: Filters the voice like a speaker. On FiveM Enhanced this needs setr sv_mumble true.",
+      "description": "Phone sound effect: Filters call voices like a phone. Switch it off when your phone script brings its own call effect (lb-phone with CallEffects is not detected). Players free the effect's slot only by restarting the game. On FiveM Enhanced this needs setr sv_mumble true.",
       "type": "boolean"
+    },
+    "clientCalls": {
+      "description": "Let players' games join calls: Off (safe): only server scripts put players into calls, or a phone script that checks each join. On: any player could join any call; needed by phones that join calls from the player's game, such as lb-phone.",
+      "type": "boolean"
+    },
+    "speaker": {
+      "description": "Phone loudspeaker: Phone scripts can turn a call's loudspeaker on: players standing next to the phone hear the other side.",
+      "type": "boolean"
+    },
+    "speakerRadius": {
+      "description": "Loudspeaker reach: Players within this many metres of the phone hear the call.",
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 15
+    },
+    "speakerVolume": {
+      "description": "Loudspeaker volume: How loud others sound, in percent; players can change it for themselves.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "speakerBidirectional": {
+      "description": "The call hears the people around: The other side of the call also hears the players standing next to the phone.",
+      "type": "boolean"
+    },
+    "backendActive": {
+      "description": "In use now",
+      "enum": [
+        "mumble",
+        "enhanced"
+      ]
+    },
+    "radioEffectBy": {
+      "description": "Effect taken over by: A running script that brings its own effect: ai-voice's effect stays off while it runs.",
+      "type": "string",
+      "maxLength": 64
+    },
+    "phoneEffectBy": {
+      "description": "Effect taken over by: A running script that brings its own effect: ai-voice's effect stays off while it runs.",
+      "type": "string",
+      "maxLength": 64
     }
   },
   "required": []

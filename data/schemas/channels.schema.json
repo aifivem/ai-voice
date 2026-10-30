@@ -31,7 +31,7 @@
           "maximum": 1000000
         },
         "jobs": {
-          "description": "Jobs: Only members of these jobs can join. Empty: everyone.",
+          "description": "Jobs: Only members of these jobs can join; a player who loses the job or goes off duty leaves at once. Empty: everyone.",
           "type": "array",
           "maxItems": 20,
           "uniqueItems": true,
@@ -43,6 +43,17 @@
         "onDuty": {
           "description": "Only on duty: The player must be on duty for one of the jobs.",
           "type": "boolean"
+        },
+        "anim": {
+          "description": "Animation: The radio animation on these frequencies (the default one, none, or a set).",
+          "enum": [
+            "",
+            "none",
+            "shoulder",
+            "chatter",
+            "handheld",
+            "custom"
+          ]
         }
       },
       "required": [

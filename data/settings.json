@@ -2,9 +2,18 @@
   "$schema": "./schemas/settings.schema.json",
   "backend": "auto",
   "modes": [
-    { "label": "Whisper", "distance": 1.5 },
-    { "label": "Normal", "distance": 3 },
-    { "label": "Shouting", "distance": 6 }
+    {
+      "label": "Whisper",
+      "distance": 1.5
+    },
+    {
+      "label": "Normal",
+      "distance": 3
+    },
+    {
+      "label": "Shouting",
+      "distance": 6
+    }
   ],
   "defaultMode": 2,
   "cycle": true,
@@ -17,5 +26,19 @@
   "syncNames": false,
   "phone": true,
   "phoneVolume": 60,
-  "phoneSubmix": true
+  "phoneSubmix": true,
+  "rangeFactor": 3,
+  "maxRadioChannels": 3,
+  "radioAnimSet": "shoulder",
+  "radioAnimDict": "random@arrests",
+  "radioAnimClip": "generic_radio_enter",
+  "radioAnimFlag": 49,
+  "clientCalls": false,
+  "speaker": true,
+  "speakerRadius": 3,
+  "speakerVolume": 60,
+  "speakerBidirectional": true,
+  "backendActive": "mumble",
+  "radioEffectBy": "",
+  "phoneEffectBy": ""
 }
