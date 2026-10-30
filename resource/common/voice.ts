@@ -1,14 +1,25 @@
 import { bool, int, isRecord, num, str } from "@aicore-fivem/lib/shared";
 
-/** ai-voice's own events (client -> server). */
+/** ai-voice's own events. */
 export const EVENTS = {
+  /** client -> server: a range of the panel (1-based). */
   setMode: "ai-voice:setMode",
+  /** client -> server: a script range on the Mumble backend (metres or null). */
   setRange: "ai-voice:setRange",
+  /** client -> server: listen to one more frequency (true) or leave it (false). */
+  radioListen: "ai-voice:radioListen",
+  /** client -> server: talk on this joined frequency. */
+  radioActive: "ai-voice:radioActive",
+  /** client -> server: phone loudspeaker on / off. */
+  setSpeaker: "ai-voice:setSpeaker",
+  /** server -> client: who a phone loudspeaker adds `{ send, hear }` (server ids). */
+  callAudio: "ai-voice:callAudio",
 } as const;
 
 /**
  * pma-voice's net and local events, kept by name and payload: ai-hud and third-party radio / phone scripts listen to
- * them, and some send the client -> server ones themselves.
+ * them, and some send the client -> server ones themselves. Radio events carry the frequency as one extra last argument
+ * (pma's listeners ignore it).
  */
 export const PMA = {
   setPlayerRadio: "pma-voice:setPlayerRadio",
@@ -27,15 +38,22 @@ export const PMA = {
   toggleRadioAnim: "pma-voice:toggleRadioAnim",
   settingsCallback: "pma-voice:settingsCallback",
   playerMuted: "pma-voice:playerMuted",
+  registerCustomSubmixes: "pma-voice:registerCustomSubmixes",
 } as const;
 
-/** State bag keys: pma-voice's player keys and ai-voice's backend key. */
+/** State bag keys: pma-voice's player keys and ai-voice's own. */
 export const KEYS = {
   backend: "ai-voice:backend",
+  /** Scripts that bring their own radio / phone effect (`Takeover`). */
+  takeover: "ai-voice:takeover",
   proximity: "proximity",
   radioChannel: "radioChannel",
   callChannel: "callChannel",
   muted: "muted",
+  /** pma-voice's lasting voice effect of a player: the name of a registered submix. */
+  submix: "submix",
+  /** The player's phone loudspeaker is on. */
+  callSpeaker: "callSpeaker",
   /** pma-voice's death flag (death scripts written for pma); ai-core's own is PLAYER_BAGS.dead. */
   isDead: "isDead",
 } as const;
@@ -44,6 +62,19 @@ export const KEYS = {
 export type Backend = "mumble" | "enhanced";
 export const parseBackend = (v: unknown): Backend | undefined =>
   v === "mumble" || v === "enhanced" ? v : undefined;
+
+/** The running scripts that apply their own radio / phone effect (resource names), null = ai-voice's. */
+export interface Takeover {
+  radio: string | null;
+  phone: string | null;
+}
+export const parseTakeover = (v: unknown): Takeover | undefined =>
+  isRecord(v)
+    ? {
+        radio: typeof v.radio === "string" ? v.radio : null,
+        phone: typeof v.phone === "string" ? v.phone : null,
+      }
+    : undefined;
 
 /** pma-voice's `proximity` bag: `index` is 1-based like pma's voice modes. */
 export interface Proximity {
@@ -75,6 +106,21 @@ export const toChannel = (v: unknown): number | null => {
   return isChannel(n) ? n : null;
 };
 
+/** Built-in radio animations (base game dictionaries). */
+export const ANIM_SETS = {
+  shoulder: { dict: "random@arrests", clip: "generic_radio_enter", flag: 50 },
+  chatter: { dict: "random@arrests", clip: "generic_radio_chatter", flag: 49 },
+  handheld: { dict: "cellphone@", clip: "cellphone_text_read_base", flag: 49 },
+} as const;
+export type AnimSetName = keyof typeof ANIM_SETS | "custom";
+export const ANIM_SET_NAMES = ["shoulder", "chatter", "handheld", "custom"];
+
+export interface Anim {
+  dict: string;
+  clip: string;
+  flag: number;
+}
+
 export interface VoiceMode {
   label: string;
   distance: number;
@@ -89,9 +135,15 @@ export interface Settings {
   /** 1-based index into `modes`. */
   defaultMode: number;
   cycle: boolean;
+  /** Legacy: players are targeted within this many times the range (native audio carries further). */
+  rangeFactor: number;
   radio: boolean;
   radioVolume: number;
+  /** Frequencies a player can be on at once (listening; talking on one of them). */
+  maxRadioChannels: number;
   radioAnim: boolean;
+  radioAnimSet: AnimSetName;
+  radioAnimCustom: Anim;
   radioAnimInVehicle: boolean;
   radioSubmix: boolean;
   micClicks: boolean;
@@ -99,6 +151,12 @@ export interface Settings {
   phone: boolean;
   phoneVolume: number;
   phoneSubmix: boolean;
+  /** Clients may join calls themselves (phones that join from the client, e.g. lb-phone). */
+  clientCalls: boolean;
+  speaker: boolean;
+  speakerRadius: number;
+  speakerVolume: number;
+  speakerBidirectional: boolean;
 }
 
 export const DEFAULT_MODES: VoiceMode[] = [
@@ -119,6 +177,11 @@ function readModes(value: unknown): VoiceMode[] {
   return modes.length ? modes : DEFAULT_MODES;
 }
 
+const animSet = (v: unknown, fallback: AnimSetName): AnimSetName =>
+  typeof v === "string" && ANIM_SET_NAMES.includes(v)
+    ? (v as AnimSetName)
+    : fallback;
+
 export function readSettings(raw: Record<string, unknown>): Settings {
   const modes = readModes(raw.modes);
   const backend = raw.backend;
@@ -127,9 +190,17 @@ export function readSettings(raw: Record<string, unknown>): Settings {
     modes,
     defaultMode: int(raw.defaultMode, 2, 1, modes.length),
     cycle: bool(raw.cycle, true),
+    rangeFactor: num(raw.rangeFactor, 3, 1, 5),
     radio: bool(raw.radio, true),
     radioVolume: int(raw.radioVolume, 30, 0, 100),
+    maxRadioChannels: int(raw.maxRadioChannels, 3, 1, 10),
     radioAnim: bool(raw.radioAnim, false),
+    radioAnimSet: animSet(raw.radioAnimSet, "shoulder"),
+    radioAnimCustom: {
+      dict: str(raw.radioAnimDict, ANIM_SETS.shoulder.dict, 64),
+      clip: str(raw.radioAnimClip, ANIM_SETS.shoulder.clip, 64),
+      flag: int(raw.radioAnimFlag, 49, 0, 1023),
+    },
     radioAnimInVehicle: bool(raw.radioAnimInVehicle, true),
     radioSubmix: bool(raw.radioSubmix, true),
     micClicks: bool(raw.micClicks, true),
@@ -137,8 +208,57 @@ export function readSettings(raw: Record<string, unknown>): Settings {
     phone: bool(raw.phone, true),
     phoneVolume: int(raw.phoneVolume, 60, 0, 100),
     phoneSubmix: bool(raw.phoneSubmix, true),
+    clientCalls: bool(raw.clientCalls, false),
+    speaker: bool(raw.speaker, true),
+    speakerRadius: num(raw.speakerRadius, 3, 0.5, 15),
+    speakerVolume: int(raw.speakerVolume, 60, 0, 100),
+    speakerBidirectional: bool(raw.speakerBidirectional, true),
   };
 }
+
+/** The animation of a set name (`custom`: the panel's dictionary and clip), null for none. */
+export function animOf(settings: Settings, name: string): Anim | null {
+  if (name === "none") return null;
+  if (name === "custom") return settings.radioAnimCustom;
+  const set = ANIM_SETS[name as keyof typeof ANIM_SETS] as Anim | undefined;
+  return set ?? null;
+}
+
+/** A frequency span of the panel: optional jobs, optional animation. */
+export interface Frequency {
+  label: string;
+  from: number;
+  to: number;
+  jobs: string[];
+  onDuty: boolean;
+  /** "" = the default animation, "none", or a set name. */
+  anim: string;
+}
+
+export function readFrequencies(raw: Record<string, unknown>): Frequency[] {
+  const list: Frequency[] = [];
+  for (const value of Object.values(raw)) {
+    if (!isRecord(value)) continue;
+    list.push({
+      label: str(value.label, "", 48),
+      from: num(value.from, 0),
+      to: num(value.to, 0),
+      jobs: Array.isArray(value.jobs)
+        ? value.jobs.filter((j): j is string => typeof j === "string")
+        : [],
+      onDuty: bool(value.onDuty, true),
+      anim: typeof value.anim === "string" ? value.anim : "",
+    });
+  }
+  return list;
+}
+
+/** The frequency span covering a channel, if any. */
+export const frequencyOf = (
+  list: readonly Frequency[],
+  channel: number,
+): Frequency | undefined =>
+  list.find((f) => channel >= f.from && channel <= f.to);
 
 /** The `proximity` bag value of a mode index (1-based) of the settings. */
 export function proximityOf(settings: Settings, index: number): Proximity {

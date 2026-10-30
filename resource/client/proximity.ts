@@ -14,7 +14,7 @@ class Proximity {
       name: "voice_cycle",
       description: Locale("KEYBIND_CYCLE"),
       hintLabel: Locale("KEYBIND_CYCLE_HINT"),
-      defaultKey: "F11",
+      defaultKey: GetConvar("voice_defaultCycle", "F11"),
       onPressed: () => this.cycle(),
     });
     proximityBag.onChange((id, value) => {

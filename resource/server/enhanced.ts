@@ -96,6 +96,19 @@ export class EnhancedRouter implements Router {
     this.leaveGroup(this.calls, channel, source);
   }
 
+  callBystander(
+    source: number,
+    channel: number,
+    on: boolean,
+    talks: boolean,
+  ): void {
+    const call = this.calls.get(channel);
+    if (!call) return;
+    if (!on) return call.remove(source);
+    const muted = this.bucketTalker(source)?.muted ?? false;
+    call.add(source, muted || !talks);
+  }
+
   rebuild(talkers: Iterable<Talker>): void {
     for (const bucket of this.buckets.values())
       for (const channel of bucket.channels.values()) channel.destroy();

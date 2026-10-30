@@ -20,6 +20,7 @@ dependencies {
 files {
 	'locales/*.json',
 	'data/settings.json',
+	'data/channels.json',
 }
 provide 'pma-voice'
 provide 'mumble-voip'

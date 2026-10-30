@@ -1,11 +1,13 @@
 import { provideExport, registerExport } from "@aicore-fivem/lib/client";
-import { PMA, toChannel } from "common";
+import { toChannel } from "common";
+import { radioAnim } from "./anim";
 import { effects } from "./effects";
 import { mumble } from "./mumble";
 import { phone } from "./phone";
 import { proximity } from "./proximity";
 import { radio } from "./radio";
 import { backendKey, log, state } from "./state";
+import { registerSubmixExports } from "./submixExports";
 
 // oxlint-disable-next-line typescript/no-explicit-any -- export arguments come from any resource; each is parsed below
 type Handler = (...args: any[]) => unknown;
@@ -31,7 +33,7 @@ function setVolume(volume: unknown, kind?: "radio" | "phone"): void {
   state.savePrefs();
 }
 
-/** The client exports: pma-voice's contract (and its mumble-voip / tokovoip aliases). */
+/** The client exports: pma-voice's contract (and its mumble-voip / tokovoip aliases) plus ai-voice's own. */
 export function registerClientExports(): void {
   const setRadio = (channel: unknown) => radio.setChannel(channelArg(channel));
   both("setRadioChannel", setRadio);
@@ -82,11 +84,11 @@ export function registerClientExports(): void {
   both("toggleMutePlayer", (serverId: unknown) => {
     if (typeof serverId === "number") effects.toggleMute(serverId);
   });
-  both("toggleRadioAnim", () => {
-    radio.animDisabled = !radio.animDisabled;
-    emit(PMA.toggleRadioAnim, radio.animDisabled);
-  });
-  both("getRadioAnimState", () => radio.animDisabled);
+  both("toggleRadioAnim", () => radioAnim.setDisabled(!radioAnim.disabled));
+  both("getRadioAnimState", () => radioAnim.disabled);
+  registerExport("setRadioAnimDisabled", (disabled: unknown) =>
+    radioAnim.setDisabled(disabled === true),
+  );
 
   // Newer pma-voice: several resources can turn the radio off without undoing each other.
   both("addRadioDisableBit", (bit: unknown) => {
@@ -96,7 +98,29 @@ export function registerClientExports(): void {
     if (typeof bit === "number") state.radioDisableBits &= ~bit;
   });
 
+  // Several frequencies at once (like tgiann-radio): hear every joined one, talk on the active one.
+  registerExport("addRadioChannel", (channel: unknown) =>
+    radio.listen(channelArg(channel), true),
+  );
+  registerExport("removeRadioChannel", (channel: unknown) =>
+    radio.listen(channelArg(channel), false),
+  );
+  registerExport("setActiveRadioChannel", (channel: unknown) =>
+    radio.setActive(channelArg(channel)),
+  );
+  registerExport("getRadioChannels", () => ({
+    active: state.radioChannel,
+    channels: [...state.radios.keys()],
+  }));
+
+  // Phone loudspeaker: players next to the phone hear the call.
+  registerExport("setCallSpeaker", (on: unknown) =>
+    phone.setSpeaker(on === true),
+  );
+  registerExport("getCallSpeaker", () => phone.speaker());
+
   registerExport("cycleProximity", () => proximity.cycle());
   registerExport("getBackend", () => backendKey.get() ?? null);
   registerExport("isRadioTalking", () => state.radioPressed);
+  registerSubmixExports(both);
 }

@@ -24,6 +24,13 @@ export interface Router {
   radioTalk(source: number, channel: number, talking: boolean): void;
   callJoin(source: number, channel: number): void;
   callLeave(source: number, channel: number): void;
+  /** A player standing at a loudspeaker phone hears that call (`talks`: the call hears them too); `on` false ends it. */
+  callBystander(
+    source: number,
+    channel: number,
+    on: boolean,
+    talks: boolean,
+  ): void;
   /** The ranges in the panel changed: place everyone again. */
   rebuild(talkers: Iterable<Talker>): void;
   stop(): void;
@@ -62,6 +69,7 @@ export class MumbleRouter implements Router {
   radioTalk(): void {}
   callJoin(): void {}
   callLeave(): void {}
+  callBystander(): void {}
   rebuild(): void {}
 
   stop(): void {

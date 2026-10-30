@@ -1,26 +1,27 @@
 import {
   cache,
+  fromServer,
   Keybind,
   onServerEvent,
-  player,
   TickLoop,
 } from "@aicore-fivem/lib/client";
-import { Locale, PMA } from "common";
+import { EVENTS, EXTERNAL, Locale, PMA } from "common";
+import { radioAnim } from "./anim";
 import { effects, micClick } from "./effects";
 import { isChannelId, isServerId, parseMembers } from "./members";
 import { mumble } from "./mumble";
 import { backendKey, deadBag, pmaDeadBag, state } from "./state";
 
-const ANIM_DICT = "random@arrests";
-const ANIM_CLIP = "generic_radio_enter";
 /** INPUT_PUSH_TO_TALK: held by script while the radio key is down, so the game transmits in push-to-talk mode too. */
 const PUSH_TO_TALK = 249;
 
 const isMumble = (): boolean => backendKey.get() === "mumble";
+const retarget = (): void => {
+  if (isMumble()) mumble.refreshPlayerTargets();
+};
 
-/** The radio: frequency membership from the server, push-to-talk, the clicks and the animation. */
+/** The radio: membership of every joined frequency from the server, push-to-talk on the active one, clicks, animation. */
 class Radio {
-  animDisabled = false;
   private readonly holdTalk = new TickLoop(() => {
     SetControlNormal(0, PUSH_TO_TALK, 1);
     SetControlNormal(1, PUSH_TO_TALK, 1);
@@ -32,37 +33,48 @@ class Radio {
       name: "voice_radio",
       description: Locale("KEYBIND_RADIO"),
       hintLabel: Locale("KEYBIND_RADIO_HINT"),
-      defaultKey: "LMENU",
+      defaultKey: GetConvar("voice_defaultRadio", "LMENU"),
       onPressed: () => this.press(),
       onReleased: () => this.release(),
     });
     onServerEvent(
       PMA.syncRadioData,
-      { args: ([members]) => [parseMembers(members)] },
-      (members) => this.sync(members),
+      {
+        args: ([members, , channel]) =>
+          isChannelId(channel) ? [parseMembers(members), channel] : null,
+      },
+      (members, channel) => this.sync(channel, members),
     );
     onServerEvent(
       PMA.addPlayerToRadio,
-      { args: ([id]) => (isServerId(id) ? [id] : null) },
-      (id) => {
-        state.radio.set(id, false);
-        if (state.radioPressed && isMumble()) mumble.refreshPlayerTargets();
+      {
+        args: ([id, , channel]) =>
+          isServerId(id) && isChannelId(channel) ? [id, channel] : null,
+      },
+      (id, channel) => {
+        this.members(channel).set(id, false);
+        if (state.radioPressed && channel === state.radioChannel) retarget();
       },
     );
     onServerEvent(
       PMA.removePlayerFromRadio,
-      { args: ([id]) => (isServerId(id) ? [id] : null) },
-      (id) => this.removeMember(id),
+      {
+        args: ([id, channel]) =>
+          isServerId(id) ? [id, isChannelId(channel) ? channel : 0] : null,
+      },
+      (id, channel) => this.removeMember(id, channel),
     );
     onServerEvent(
       PMA.setTalkingOnRadio,
       {
-        args: ([id, talking]) =>
-          isServerId(id) && typeof talking === "boolean" ? [id, talking] : null,
+        args: ([id, talking, channel]) =>
+          isServerId(id) && typeof talking === "boolean"
+            ? [id, talking, isChannelId(channel) ? channel : 0]
+            : null,
       },
-      (id, talking) => {
+      (id, talking, channel) => {
         if (id === cache.serverId) return;
-        state.radio.set(id, talking);
+        this.radios(channel)?.set(id, talking);
         effects.toggle(id, talking, "radio");
         micClick(talking);
       },
@@ -70,37 +82,81 @@ class Radio {
     onServerEvent(
       PMA.clSetPlayerRadio,
       { args: ([channel]) => (isChannelId(channel) ? [channel] : null) },
-      (channel) => (state.radioChannel = channel),
+      (channel) => {
+        if (channel !== state.radioChannel && state.radioPressed)
+          this.release();
+        state.radioChannel = channel;
+      },
     );
+    this.watchExternal();
   }
 
-  /** pma-voice `setRadioChannel`: 0 leaves. */
+  /** pma-voice `setRadioChannel`: the active frequency; 0 leaves every frequency. The server answers with the result. */
   setChannel(channel: number): void {
-    if (!state.settings.radio) return;
-    emitNet(PMA.setPlayerRadio, channel);
-    state.radioChannel = channel;
+    if (state.settings.radio) emitNet(PMA.setPlayerRadio, channel);
   }
 
-  private sync(members: Map<number, boolean> | null): void {
-    state.radio.clear();
+  /** Hear one more frequency (the panel limits how many), or leave one. */
+  listen(channel: number, on: boolean): void {
+    if (state.settings.radio) emitNet(EVENTS.radioListen, channel, on);
+  }
+
+  /** Talk on another joined frequency. */
+  setActive(channel: number): void {
+    if (state.radios.has(channel)) emitNet(EVENTS.radioActive, channel);
+  }
+
+  /**
+   * tgiann-radio-v2 runs its own radio on Mumble: while its key is held its members stay in the voice target. Its
+   * local `pma-voice:syncRadioData` carries them (a server event to ai-voice always comes with a frequency).
+   */
+  private watchExternal(): void {
+    on(EXTERNAL.radioPressed, (pressed: unknown) => {
+      state.externalRadioPressed = pressed === true;
+      retarget();
+    });
+    on(PMA.syncRadioData, (members: unknown) => {
+      if (fromServer()) return;
+      state.externalRadio.clear();
+      for (const id of parseMembers(members)?.keys() ?? [])
+        state.externalRadio.add(id);
+      if (state.externalRadioPressed) retarget();
+    });
+  }
+
+  private radios(channel: number): Map<number, boolean> | undefined {
+    return state.radios.get(channel);
+  }
+
+  private members(channel: number): Map<number, boolean> {
+    let members = state.radios.get(channel);
+    if (!members) state.radios.set(channel, (members = new Map()));
+    return members;
+  }
+
+  private sync(channel: number, members: Map<number, boolean> | null): void {
+    const list = this.members(channel);
+    list.clear();
     for (const [id, talking] of members ?? []) {
-      state.radio.set(id, talking);
-      if (id !== cache.serverId) effects.toggle(id, talking, "radio");
+      list.set(id, talking);
+      if (id !== cache.serverId && talking) effects.toggle(id, true, "radio");
     }
   }
 
-  private removeMember(id: number): void {
+  private removeMember(id: number, channel: number): void {
     if (id !== cache.serverId) {
-      state.radio.delete(id);
-      effects.toggle(id, false, "radio");
-    } else {
-      for (const member of state.radio.keys())
-        if (member !== cache.serverId) effects.toggle(member, false, "radio");
-      state.radio.clear();
-      state.radioChannel = 0;
-      if (state.radioPressed) this.release();
+      this.radios(channel)?.delete(id);
+      if (!state.onAnyRadio(id)) effects.toggle(id, false, "radio");
+    } else if (channel !== 0) {
+      // This player left the frequency (0: a refused join, nothing was joined).
+      const members = this.radios(channel);
+      state.radios.delete(channel);
+      for (const member of members?.keys() ?? [])
+        if (member !== id && !state.onAnyRadio(member))
+          effects.toggle(member, false, "radio");
+      if (channel === state.radioChannel && state.radioPressed) this.release();
     }
-    if (state.radioPressed && isMumble()) mumble.refreshPlayerTargets();
+    if (state.radioPressed) retarget();
   }
 
   private canTalk(): boolean {
@@ -118,28 +174,22 @@ class Radio {
   private press(): void {
     if (state.radioPressed || !this.canTalk()) return;
     state.radioPressed = true;
-    if (isMumble()) mumble.refreshPlayerTargets();
+    retarget();
     emitNet(PMA.setTalkingOnRadio, true);
     micClick(true);
     this.holdTalk.set(true);
     emit(PMA.radioActive, true);
-    if (
-      state.settings.radioAnim &&
-      !this.animDisabled &&
-      (state.settings.radioAnimInVehicle || cache.vehicle === false)
-    )
-      void player.playAnim(ANIM_DICT, ANIM_CLIP, { flag: 50, blendOut: 2 });
+    radioAnim.play(state.radioChannel);
   }
 
   private release(): void {
     if (!state.radioPressed) return;
     state.radioPressed = false;
     this.holdTalk.set(false);
-    if (isMumble()) mumble.refreshPlayerTargets();
+    retarget();
     emit(PMA.radioActive, false);
     micClick(false);
-    if (state.settings.radioAnim)
-      StopAnimTask(cache.ped, ANIM_DICT, ANIM_CLIP, -4);
+    radioAnim.stop();
     emitNet(PMA.setTalkingOnRadio, false);
   }
 }

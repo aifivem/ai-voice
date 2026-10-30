@@ -1,9 +1,18 @@
 import { AdminPanel } from "@aicore-fivem/lib/server";
-import { bool, isRecord, num, str } from "@aicore-fivem/lib/shared";
-import { readSettings, type Settings } from "common/voice";
+import { isRecord, num } from "@aicore-fivem/lib/shared";
+import {
+  frequencyOf,
+  readFrequencies,
+  readSettings,
+  type Frequency,
+  type Settings,
+} from "common/voice";
+import { seedFromConvars } from "./convars";
 import { schema } from "./schema";
 
 export const panel = new AdminPanel(schema);
+// The commit calls ai-core's export: not during the module's first run.
+setImmediate(() => seedFromConvars(panel));
 
 panel.rule("channels", (_key, next) =>
   isRecord(next) && num(next.from, 0) > num(next.to, 0)
@@ -11,57 +20,58 @@ panel.rule("channels", (_key, next) =>
     : null,
 );
 
-/** A radio frequency span reserved for jobs (panel tab Restricted channels). */
-export interface Restriction {
-  label: string;
-  from: number;
-  to: number;
-  jobs: string[];
-  onDuty: boolean;
-}
-
-function readRestrictions(raw: Record<string, unknown>): Restriction[] {
-  const list: Restriction[] = [];
-  for (const value of Object.values(raw)) {
-    if (!isRecord(value)) continue;
-    list.push({
-      label: str(value.label, "", 48),
-      from: num(value.from, 0),
-      to: num(value.to, 0),
-      jobs: Array.isArray(value.jobs)
-        ? value.jobs.filter((j): j is string => typeof j === "string")
-        : [],
-      onDuty: bool(value.onDuty, true),
-    });
-  }
-  return list;
-}
-
-/** The parsed panel content, read again after every change; `onSettings` hears a settings change. */
+/** The parsed panel content, read again after every change. */
 class Content {
   settings: Settings = readSettings(panel.get("settings"));
-  restrictions: Restriction[] = readRestrictions(panel.get("channels"));
-  private readonly listeners: Array<(next: Settings, old: Settings) => void> =
-    [];
+  frequencies: Frequency[] = readFrequencies(panel.get("channels"));
+  private readonly settingsListeners: Array<
+    (next: Settings, old: Settings) => void
+  > = [];
+  private readonly frequencyListeners: Array<() => void> = [];
 
   constructor() {
     panel.onChange("settings", () => {
       const old = this.settings;
       this.settings = readSettings(panel.get("settings"));
-      for (const listener of this.listeners) listener(this.settings, old);
+      for (const listener of this.settingsListeners)
+        listener(this.settings, old);
     });
     panel.onChange("channels", () => {
-      this.restrictions = readRestrictions(panel.get("channels"));
+      this.frequencies = readFrequencies(panel.get("channels"));
+      for (const listener of this.frequencyListeners) listener();
     });
   }
 
   onSettings(listener: (next: Settings, old: Settings) => void): void {
-    this.listeners.push(listener);
+    this.settingsListeners.push(listener);
   }
 
-  /** The restriction covering a frequency, if any. */
-  restrictionOf(channel: number): Restriction | undefined {
-    return this.restrictions.find((r) => channel >= r.from && channel <= r.to);
+  onFrequencies(listener: () => void): void {
+    this.frequencyListeners.push(listener);
+  }
+
+  /** The frequency span covering a channel, if any. */
+  frequencyOf(channel: number): Frequency | undefined {
+    return frequencyOf(this.frequencies, channel);
+  }
+
+  /**
+   * Runtime values the panel shows next to the settings (backend in use, scripts with their own effect), written
+   * only when they change; deferred because the commit calls ai-core's export.
+   */
+  showStatus(values: {
+    backendActive?: string;
+    radioEffectBy?: string;
+    phoneEffectBy?: string;
+  }): void {
+    setImmediate(() => {
+      const current = panel.get("settings");
+      const changed = Object.entries(values).some(
+        ([key, value]) => current[key] !== value,
+      );
+      if (changed)
+        panel.commit("settings", undefined, { ...current, ...values });
+    });
   }
 }
 

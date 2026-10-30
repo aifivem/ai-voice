@@ -1,12 +1,12 @@
 import {
-  addCommand,
   aiLogChannels,
   eventSource,
   GlobalKey,
   onClientEvent,
 } from "@aicore-fivem/lib/server";
 import { asArgs, createLogger } from "@aicore-fivem/lib/shared";
-import { Locale, ResourceName } from "common";
+import { CORE } from "@aicore-fivem/shared";
+import { ResourceName } from "common";
 import {
   EVENTS,
   isChannel,
@@ -17,6 +17,8 @@ import {
   RANGE_MIN,
   type Backend,
 } from "common/voice";
+import { checks } from "./checks";
+import { registerCommands } from "./commands";
 import { content } from "./content";
 import { EnhancedRouter } from "./enhanced";
 import { registerServerExports } from "./exports";
@@ -25,6 +27,8 @@ import { Mutes } from "./mute";
 import { hasEnhancedVoice } from "./natives";
 import { callBag, Players, proximityBag, radioBag } from "./players";
 import { MumbleRouter, type Router } from "./router";
+import { Speakers } from "./speaker";
+import { watchTakeover } from "./takeover";
 
 const log = createLogger(ResourceName);
 aiLogChannels({ mutes: {} });
@@ -44,31 +48,50 @@ const router: Router =
     ? new EnhancedRouter(() => content.settings.modes.map((m) => m.distance))
     : new MumbleRouter();
 new GlobalKey(KEYS.backend, parseBackend).set(backend);
+content.showStatus({ backendActive: backend });
 log.info(`voice backend: ${backend}`);
+watchTakeover();
 
 const players = new Players(router);
 const groups = new Groups(players, router);
 const mutes = new Mutes(players);
-registerServerExports(players, groups, mutes, router);
+const speakers = new Speakers(players, groups, router);
+registerServerExports({ players, groups, mutes, router, speakers });
+registerCommands(players, groups, mutes, router);
 
-// A restart of ai-voice: the bags survive it, so players keep their range, radio and call.
-for (const id of getPlayers()) {
-  const source = Number(id);
+/** Places a player and puts back what they had (a restart of ai-voice keeps the bags). */
+function join(source: number): void {
   const mode = proximityBag.get(source)?.index;
   const radio = radioBag.get(source) ?? 0;
   const call = callBag.get(source) ?? 0;
   players.join(source);
+  mutes.join(source);
   if (mode !== undefined) players.setMode(source, mode);
-  if (radio > 0) groups.setRadio(source, radio, true);
+  if (radio > 0) groups.setRadio(source, radio);
   if (call > 0) groups.setCall(source, call, true);
 }
 
-on("playerJoining", () => players.join(eventSource()));
+for (const id of getPlayers()) join(Number(id));
+
+on("playerJoining", () => join(eventSource()));
 on("playerDropped", () => {
   const source = eventSource();
+  speakers.drop(source);
   groups.drop(source);
-  mutes.clear(source);
+  mutes.drop(source);
   players.drop(source);
+});
+
+// Job frequencies are checked again when jobs, duty or the character change (after lib `online` saw the change).
+const recheck = (source: unknown) => {
+  if (typeof source === "number") setTimeout(() => groups.recheck(source), 0);
+};
+on(CORE.jobsChangedEvent, recheck);
+on(CORE.dutyChangedEvent, recheck);
+on(CORE.playerUnloadedEvent, recheck);
+on(CORE.playerLoadedEvent, recheck);
+content.onFrequencies(() => {
+  for (const player of players.all()) groups.recheck(player.source);
 });
 
 content.onSettings((next, old) => {
@@ -88,55 +111,64 @@ const toRange = ([v]: readonly unknown[]): [number | null] | null =>
       : null;
 const toChannelArg = ([v]: readonly unknown[]) =>
   asArgs(isChannel(v) ? v : null);
+const toBool = ([v]: readonly unknown[]) =>
+  asArgs(typeof v === "boolean" ? v : null);
+const perSecond = (count: number) => ({ count, windowMs: 1000 });
 
-onClientEvent(EVENTS.setMode, { args: toIndex }, (source, index) =>
-  players.setMode(source, index),
+onClientEvent(
+  EVENTS.setMode,
+  { args: toIndex, rate: perSecond(2) },
+  (source, index) => players.setMode(source, index),
 );
-onClientEvent(EVENTS.setRange, { args: toRange }, (source, range) =>
-  players.setRange(source, range),
+// Clients pick panel ranges only; a script range from a client is taken on Mumble (its audio is client-routed
+// anyway), never on Enhanced, where the server would carry the voice that far.
+onClientEvent(
+  EVENTS.setRange,
+  { args: toRange, rate: perSecond(1) },
+  (source, range) =>
+    router.backend === "mumble" || range === null
+      ? players.setRange(source, range)
+      : false,
 );
-onClientEvent(PMA.setPlayerRadio, { args: toChannelArg }, (source, channel) =>
-  groups.setRadio(source, channel, false),
+onClientEvent(
+  PMA.setPlayerRadio,
+  { args: toChannelArg, rate: perSecond(2) },
+  (source, channel) => groups.setRadio(source, channel),
+);
+onClientEvent(
+  EVENTS.radioListen,
+  {
+    args: ([ch, on]) =>
+      isChannel(ch) && typeof on === "boolean" ? [ch, on] : null,
+    rate: perSecond(2),
+  },
+  (source, channel, on) => groups.listen(source, channel, on),
+);
+onClientEvent(
+  EVENTS.radioActive,
+  { args: toChannelArg, rate: perSecond(2) },
+  (source, channel) => groups.setActive(source, channel),
 );
 onClientEvent(
   PMA.setTalkingOnRadio,
-  { args: ([v]) => asArgs(typeof v === "boolean" ? v : null) },
+  { args: toBool, rate: perSecond(4) },
   (source, talking) => groups.setRadioTalking(source, talking),
 );
-onClientEvent(PMA.setPlayerCall, { args: toChannelArg }, (source, channel) =>
-  groups.setCall(source, channel, false),
-);
-
-addCommand(
-  "muteply",
-  {
-    help: Locale("COMMAND_MUTE"),
-    restricted: true,
-    params: [
-      { name: "id", type: "playerId", help: Locale("COMMAND_P_ID") },
-      {
-        name: "seconds",
-        type: "number",
-        help: Locale("COMMAND_P_SECONDS"),
-        optional: true,
-      },
-    ] as const,
+// Joining a call from the client needs a phone script's check (or the panel's switch); hanging up is always allowed.
+onClientEvent(
+  PMA.setPlayerCall,
+  { args: toChannelArg, rate: perSecond(2) },
+  (source, channel) => {
+    if (channel === 0 || checks.canClientJoinCall(source, channel))
+      return groups.setCall(source, channel, false);
+    log.warn(`player ${source} asked to join call ${channel}: refused`);
+    groups.refuseCall(source);
   },
-  (source, args) => mutes.toggle(args.id, source, args.seconds ?? 900),
 );
-
-addCommand(
-  "voicedebug",
-  { help: Locale("COMMAND_DEBUG"), restricted: true },
-  () => {
-    log.info(`backend ${router.backend}`);
-    for (const p of players.all())
-      log.info(
-        `${p.source}: range ${p.distance} m (mode ${p.mode}) radio ${p.radio} call ${p.call}${p.muted ? " muted" : ""}`,
-      );
-    for (const line of [...groups.describe(), ...router.describe()])
-      log.info(line);
-  },
+onClientEvent(
+  EVENTS.setSpeaker,
+  { args: toBool, rate: perSecond(2) },
+  (source, on) => speakers.set(source, on),
 );
 
 on("onResourceStop", (resource: string) => {

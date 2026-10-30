@@ -18,6 +18,7 @@ export const proximityBag = new PlayerState(KEYS.proximity, parseProximity);
 export const radioBag = new PlayerState(KEYS.radioChannel, stateNumber);
 export const callBag = new PlayerState(KEYS.callChannel, stateNumber);
 export const mutedBag = new PlayerState(KEYS.muted, stateBoolean);
+export const speakerBag = new PlayerState(KEYS.callSpeaker, stateBoolean);
 
 /** One connected player's voice state; the server is its only writer. */
 export class VoicePlayer implements Talker {
@@ -25,8 +26,12 @@ export class VoicePlayer implements Talker {
   mode: number;
   /** A range a script set (`overrideProximityRange`), else null. */
   range: number | null = null;
+  /** The frequency push-to-talk sends on (0 = none); always one of `radios`. */
   radio = 0;
+  /** Every frequency the player hears. */
+  readonly radios = new Set<number>();
   call = 0;
+  speaker = false;
   muted = false;
 
   constructor(readonly source: number) {
@@ -68,6 +73,7 @@ export class Players {
     radioBag.set(source, 0);
     callBag.set(source, 0);
     mutedBag.set(source, false);
+    speakerBag.set(source, false);
     this.router.join(player);
     return player;
   }
@@ -103,7 +109,7 @@ export class Players {
 
   setMuted(source: number, muted: boolean): void {
     const player = this.players.get(source);
-    if (!player) return;
+    if (!player || player.muted === muted) return;
     player.muted = muted;
     mutedBag.set(source, muted);
     this.router.update(player);

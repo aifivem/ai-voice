@@ -5,8 +5,6 @@ import { log, proximityBag, state } from "./state";
 const TARGET = 1;
 /** pma-voice's offset for script channels: above every server id. */
 const SCRIPT_CHANNEL_BASE = 65535;
-/** Native audio carries sound further than GTA units: pma-voice targets players within 3x the range. */
-const NATIVE_AUDIO_FACTOR = 3;
 
 type ProximityCheck = (player: number) => boolean;
 
@@ -19,14 +17,18 @@ class MumbleVoice {
   private started = false;
   private listening = false;
   private mode: "proximity" | "channel" = "proximity";
+  /** This tick's own position and squared target range (read once per tick, not once per player). */
+  private x = 0;
+  private y = 0;
+  private z = 0;
+  private range2 = 0;
   private readonly defaultCheck: ProximityCheck = (player) => {
-    const [x = 0, y = 0, z = 0] = GetEntityCoords(cache.ped, false);
-    const [tx = 0, ty = 0, tz = 0] = GetEntityCoords(
-      GetPlayerPed(player),
-      false,
-    );
-    const range = this.distance() * NATIVE_AUDIO_FACTOR;
-    return (x - tx) ** 2 + (y - ty) ** 2 + (z - tz) ** 2 < range * range;
+    // One array per player is the native's own return; nothing else is allocated per player.
+    const pos = GetEntityCoords(GetPlayerPed(player), false);
+    const dx = this.x - (pos[0] ?? 0);
+    const dy = this.y - (pos[1] ?? 0);
+    const dz = this.z - (pos[2] ?? 0);
+    return dx * dx + dy * dy + dz * dz < this.range2;
   };
   private check: ProximityCheck = this.defaultCheck;
   /** The resource that set `check`; its stop brings the default back. */
@@ -84,7 +86,11 @@ class MumbleVoice {
     }
   }
 
-  /** Call members always, radio members while push-to-talk is held. */
+  /**
+   * Who hears this player beyond proximity: call members and loudspeaker targets always, the active frequency while
+   * push-to-talk is held, and the players tgiann-phone / tgiann-radio-v2 route to (they add targets themselves; a
+   * refresh here would otherwise drop theirs).
+   */
   refreshPlayerTargets(): void {
     if (!this.started) return;
     MumbleClearVoiceTargetPlayers(TARGET);
@@ -95,7 +101,12 @@ class MumbleVoice {
       MumbleAddVoiceTargetPlayerByServerId(TARGET, id);
     };
     for (const id of state.call.keys()) add(id);
-    if (state.radioPressed) for (const id of state.radio.keys()) add(id);
+    for (const id of state.speakerAudio.send) add(id);
+    for (const id of state.externalCall) add(id);
+    if (state.radioPressed)
+      for (const id of state.activeMembers().keys()) add(id);
+    if (state.externalRadioPressed)
+      for (const id of state.externalRadio) add(id);
   }
 
   private async joinOwnChannel(): Promise<void> {
@@ -122,6 +133,13 @@ class MumbleVoice {
   }
 
   private addNearby(): void {
+    const own = GetEntityCoords(cache.ped, false);
+    this.x = own[0] ?? 0;
+    this.y = own[1] ?? 0;
+    this.z = own[2] ?? 0;
+    // Native audio carries further than GTA units: players within this many times the range are targeted.
+    const range = this.distance() * state.settings.rangeFactor;
+    this.range2 = range * range;
     MumbleClearVoiceTargetChannels(TARGET);
     const players: unknown = GetActivePlayers();
     if (!Array.isArray(players)) return;

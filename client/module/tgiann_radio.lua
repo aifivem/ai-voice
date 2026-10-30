@@ -1,0 +1,2 @@
+-- Not loaded. tgiann-radio-v2 checks that this file exists in pma-voice (ai-voice provides pma-voice and
+-- handles tgiann-radio-v2:setRadioPressed itself, so no custom pma-voice file is needed).

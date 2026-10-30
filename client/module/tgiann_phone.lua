@@ -1,0 +1,2 @@
+-- Not loaded. tgiann-phone checks that this file exists in pma-voice (ai-voice provides pma-voice and
+-- handles tgiann-phone:voiceTargets itself, so no custom pma-voice file is needed).

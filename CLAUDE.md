@@ -1,34 +1,43 @@
 # ai-voice
 
-Proximity voice with ranges, radio with push-to-talk and phone calls, on FiveM Legacy (Mumble) and FiveM for GTAV Enhanced (server voice channels) from one resource. Stands in for pma-voice (`provide 'pma-voice'` and its aliases, every export, state bag and event). Depends on ai-core (panel, keybinds, lib `online` for job frequencies). Design and research: `docs/voice-design.md`; compatibility list: `docs/compat/voice.md`.
+Proximity voice with ranges, radio (several frequencies at once, push-to-talk on the active one) and phone calls with a loudspeaker, on FiveM Legacy (Mumble) and FiveM for GTAV Enhanced (server voice channels) from one resource. Stands in for pma-voice (`provide 'pma-voice'` and its aliases, every export, state bag and event) and runs tgiann-radio-v2 and tgiann-phone without their custom pma-voice files. Depends on ai-core (panel, keybinds, lib `online` for job frequencies). Design and research: `docs/voice-design.md`; compatibility list: `docs/compat/voice.md`.
 
 ## Decisions
 
 - One backend per server start, chosen on the server (panel `backend`, `auto` probes the Enhanced API by creating two channels) and published in GlobalState `ai-voice:backend`; clients start the matching half. A panel change of the backend applies at the next start.
-- The server owns all voice state on both backends: range, radio and call membership, admin mute. Clients ask through the lib gate; the server writes the bags. pma-voice wrote `proximity` from the client, which `sv_stateBagStrictMode` blocks, so on this server only ai-voice makes that bag real.
-- Enhanced: per routing bucket one spatial channel per range in use; every player is in all of their bucket's channels and unmuted only in their range's. Radio is a 2D channel per frequency (muted until push-to-talk), a call a 2D channel per call. A 1 s server timer moves players whose routing bucket changed (no engine event exists).
-- Mumble: pma-voice's model (own channel = server id, voice target 1, re-targeted every 200 ms within 3x the range because native audio carries further; call members always targeted, radio members while the radio key is held). ai-voice sets `voice_useNativeAudio` and `voice_useSendingRangeOnly` itself.
-- Call members are voice targets for the whole call (pma added them per frame only while talking): Mumble sends nothing while silent, so no tick is needed.
+- The server owns all voice state on both backends: range, frequencies, calls, loudspeakers, admin mute. Clients ask through the lib gate (rates: range 2/s, script range 1/s, frequency changes 2/s, push-to-talk 4/s); the server writes the bags. pma-voice wrote `proximity` from the client, which `sv_stateBagStrictMode` blocks, so on this server only ai-voice makes that bag real.
+- Calls: only server scripts (`setPlayerCall`) put players into calls. A client's `pma-voice:setPlayerCall` with a call id is refused unless a phone script's `addCallCheck` allows it, or the panel's `clientCalls` switch is on (phones that join from the client, e.g. lb-phone). Hanging up is always allowed.
+- Frequencies: pma-voice's single radio is the active frequency (`radioChannel` bag, pma events); more frequencies are listened to through ai-voice's own exports and events. pma's radio net events carry the frequency as an extra last argument so clients keep members per frequency. Job frequencies are checked again on job, duty and character changes (ai-core events, after lib `online` saw them) and on a panel change.
+- Clients pick only panel ranges. A script range from a client (`overrideProximityRange`) is accepted on Mumble (client-routed audio anyway) and refused on Enhanced; server scripts set any range with `setPlayerRange`.
+- Enhanced: per routing bucket one spatial channel per range in use; every player is in all of their bucket's channels and unmuted only in their range's. Each frequency and each call is a 2D channel (frequency members muted until push-to-talk on their active frequency). Loudspeaker bystanders join the call's channel. A 1 s server timer moves players whose routing bucket changed (no engine event exists).
+- Mumble: pma-voice's model (own channel = server id, voice target 1, re-targeted every 200 ms within the range times the panel's reach factor; call members, loudspeaker targets and tgiann-phone's targets always, the active frequency or tgiann-radio-v2's members while their key is held). Own position is read once per tick. ai-voice sets `voice_useNativeAudio` and `voice_useSendingRangeOnly` itself.
+- Loudspeaker: a 1 s server timer runs only while a speaker is on; bystanders come from lib `playersNear`. Mumble clients get `{ send, call, speaker }` sets only when they changed.
+- Submixes: the game has 40 submix slots shared with its own audio (FiveM `NuiAudioSink.cpp` `kSubmixCount`; past it `CreateAudioSubmix` returns -1), none can be deleted, a name is created once per game session. ai-voice keeps one registry per client (`createSubmix` reuses a name, `editSubmix` changes it; pma's `registerCustomSubmix` / `setEffectSubmix` feed it) and creates its own Radio / Phone submix only on first use, never when switched off or taken over.
+- Takeover (owner decision): tgiann-radio or tgiann-radio-v2 running turns ai-voice's radio effect off, tgiann-phone the phone effect; no other script is detected (lb-phone is not: the owner switches the phone effect off). Shown next to the effect switches (settings sections written by ai-voice).
+- pma-voice's cfg convars seed the panel once (a convar replaces a setting still at its built-in default and is written into the panel; the panel wins from then on). Key convars `voice_defaultCycle` / `voice_defaultRadio` (replicated) are the keybinds' defaults.
+- Admin mutes are kept by license with an end time, so they survive a reconnect; timers re-arm past the 24.8-day setTimeout limit (mutes are capped at one year).
 - Radio / phone filters and volume overrides are Mumble client natives: on Enhanced they run only with `setr sv_mumble true`. Radio clicks are GTA sounds (`CB_RADIO_SFX`), so the script has no NUI; ai-hud draws range, talking and radio.
 - Net events keep pma-voice's names and payloads (`resource/common/voice.ts` `PMA`): third-party radio UIs listen to them. That is the one exception to `<resource>:<camelCase>` event names.
 - Player volumes and mic clicks are the player's own (client KVP `ai-voice:prefs`), defaulting to the panel's values.
 
 ## Contracts
 
-- Server exports (also under `pma-voice`): `setPlayerRadio`, `setPlayerCall`, `getPlayersInRadioChannel` / `GetPlayersInRadioChannel`, `addChannelCheck`, `overrideRadioNameGetter`, `isValidPlayer`. Own: `getBackend`, `setPlayerProximityMode(source, index)`, `setPlayerRange(source, metres | null)`, `getPlayerProximity`, `toggleMute(source, seconds?)`, `addProximityCheck(fn(source, index, distance) -> false to refuse)`.
-- Client exports: pma-voice's whole client list (`docs/compat/voice.md`) plus `addRadioDisableBit` / `removeRadioDisableBit`; own `cycleProximity`, `getBackend`, `isRadioTalking`.
-- Player bags (server-written): `proximity` `{ index, distance, mode }`, `radioChannel`, `callChannel`, `muted`. Read: ai-core's `dead` and pma's `isDead`.
-- Local events: client `pma-voice:setTalkingMode`, `pma-voice:radioActive`, `pma-voice:toggleRadioAnim`, answers `pma-voice:settingsCallback`; server `pma-voice:playerMuted`.
+- Server exports (also under `pma-voice`): `setPlayerRadio`, `setPlayerCall`, `getPlayersInRadioChannel` / `GetPlayersInRadioChannel`, `addChannelCheck`, `overrideRadioNameGetter`, `isValidPlayer`. Own: `getBackend`, `setPlayerProximityMode(source, index)`, `setPlayerRange(source, metres | null)`, `getPlayerProximity`, `toggleMute(source, seconds?)`, `addProximityCheck(fn(source, index, distance) -> false to refuse)`, `addPlayerRadioListen` / `removePlayerRadioListen` / `setPlayerRadioActive(source, channel)`, `getPlayerRadioChannels(source) -> { active, channels }`, `addCallCheck(fn(source, callId) -> true to allow)`, `setPlayerCallSpeaker(source, on)` / `getPlayerCallSpeaker`, `setPlayerSubmix(source, name | null)` (pma's `submix` bag).
+- Client exports: pma-voice's whole client list (`docs/compat/voice.md`) plus `addRadioDisableBit` / `removeRadioDisableBit`, `registerCustomSubmix`, `setEffectSubmix`; own `addRadioChannel` / `removeRadioChannel` / `setActiveRadioChannel` / `getRadioChannels`, `setCallSpeaker` / `getCallSpeaker`, `setRadioAnimDisabled`, `createSubmix(name, spec)` / `getSubmix` / `editSubmix` / `listSubmixes`, `cycleProximity`, `getBackend`, `isRadioTalking`.
+- Player bags (server-written): `proximity` `{ index, distance, mode }`, `radioChannel` (active frequency), `callChannel`, `callSpeaker`, `muted`, `submix`. Read: ai-core's `dead` and pma's `isDead`. GlobalState `ai-voice:backend`, `ai-voice:takeover`.
+- Local events: client `pma-voice:setTalkingMode`, `pma-voice:radioActive`, `pma-voice:toggleRadioAnim`, `pma-voice:registerCustomSubmixes`, answers `pma-voice:settingsCallback`; heard: `tgiann-radio-v2:setRadioPressed`, a local `pma-voice:syncRadioData` (tgiann-radio-v2's members), `tgiann-phone:voiceTargets`. Server `pma-voice:playerMuted`.
+- `client/module/tgiann_radio.lua` and `tgiann_phone.lua` at the resource root are not loaded: tgiann-radio-v2 and tgiann-phone check that these files exist in `GetResourcePath("pma-voice")`.
 - Keybinds `voice_cycle` (F11) and `voice_radio` (left Alt). Commands `muteply`, `voicedebug` (admins).
 
 ## Pitfalls
 
 - The Enhanced natives are in neither the typings nor `native.py`; they are called by hash in `server/natives.ts` (joaat of the upper-case name). Float arguments get FiveM's `+ 0.0000001`, or an integral distance arrives as an int.
 - `AddPlayerToVoiceChannel` on a member resets its muted and deaf state: `VoiceChannel` never re-adds.
-- A restart of ai-voice keeps the player bags: the server reads range, radio and call back from them at start.
+- A restart of ai-voice keeps the player bags: the server reads range, active frequency and call back from them at start (listened frequencies and loudspeakers are not kept).
 - `provide` lines need a full server start before `GetResourceState("pma-voice")` reports started.
+- Settings commits from ai-voice itself (convar seeding, the status sections) run in `setImmediate`: the commit calls ai-core's export.
 
 ## Entry points
 
-- Server: wiring `resource/server/index.ts`, backends `server/router.ts` (Mumble) and `server/enhanced.ts`, radio and calls `server/groups.ts`, panel `server/schema.ts`.
-- Client: `resource/client/index.ts`, Legacy routing `client/mumble.ts`, radio `client/radio.ts`.
+- Server: wiring `resource/server/index.ts`, backends `server/router.ts` (Mumble) and `server/enhanced.ts`, frequencies and calls `server/groups.ts`, loudspeaker `server/speaker.ts`, takeover `server/takeover.ts`, cfg convars `server/convars.ts`, panel `server/schema.ts`.
+- Client: `resource/client/index.ts`, Legacy routing `client/mumble.ts`, radio `client/radio.ts` and `client/anim.ts`, submixes `client/submixes.ts`.

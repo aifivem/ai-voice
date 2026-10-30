@@ -38,7 +38,8 @@
     "typescript": "^6.0.3"
   },
   "fxFiles": [
-    "data/settings.json"
+    "data/settings.json",
+    "data/channels.json"
   ],
   "fxProvide": [
     "pma-voice",
