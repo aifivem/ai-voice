@@ -1,0 +1,21 @@
+{
+  "$schema": "./schemas/settings.schema.json",
+  "backend": "auto",
+  "modes": [
+    { "label": "Whisper", "distance": 1.5 },
+    { "label": "Normal", "distance": 3 },
+    { "label": "Shouting", "distance": 6 }
+  ],
+  "defaultMode": 2,
+  "cycle": true,
+  "radio": true,
+  "radioVolume": 30,
+  "radioAnim": false,
+  "radioAnimInVehicle": true,
+  "radioSubmix": true,
+  "micClicks": true,
+  "syncNames": false,
+  "phone": true,
+  "phoneVolume": 60,
+  "phoneSubmix": true
+}

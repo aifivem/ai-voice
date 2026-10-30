@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ai-voice/data/channels.json",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "This file's JSON Schema (for editors)."
+    }
+  },
+  "patternProperties": {
+    "^[a-z0-9_]{2,32}$": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "description": "Name",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 48
+        },
+        "from": {
+          "description": "From frequency: Frequencies as the radio shows them, for example 1 to 10 or 1.5.",
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 1000000
+        },
+        "to": {
+          "description": "To frequency: Frequencies as the radio shows them, for example 1 to 10 or 1.5.",
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 1000000
+        },
+        "jobs": {
+          "description": "Jobs: Only members of these jobs can join. Empty: everyone.",
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 32
+          }
+        },
+        "onDuty": {
+          "description": "Only on duty: The player must be on duty for one of the jobs.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "label",
+        "from",
+        "to",
+        "jobs",
+        "onDuty"
+      ]
+    }
+  },
+  "additionalProperties": false
+}
