@@ -108,10 +108,7 @@ class Checks {
     const fn = this.names.get("name");
     const custom = fn ? ask(fn, source) : null;
     if (typeof custom === "string") return custom;
-    const character = online.character(source);
-    return character
-      ? `${character.firstname} ${character.lastname}`
-      : GetPlayerName(String(source));
+    return online.name(source);
   }
 }
 
