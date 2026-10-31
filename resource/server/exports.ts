@@ -70,8 +70,7 @@ export function registerServerExports(s: Services): void {
       throw new Error("'cb' expected a function");
   });
   both("overrideRadioNameGetter", (_channel: unknown, fn: unknown) => {
-    if (!checks.setNameGetter(fn))
-      throw new Error("'cb' expected a function");
+    if (!checks.setNameGetter(fn)) throw new Error("'cb' expected a function");
   });
   both("isValidPlayer", (source: unknown) => {
     const src = toSource(source);
@@ -106,8 +105,7 @@ export function registerServerExports(s: Services): void {
     return src !== null && s.mutes.toggle(src, 0, time);
   });
   registerExport("addProximityCheck", (fn: unknown) => {
-    if (!checks.addModeCheck(fn))
-      throw new Error("expected a function");
+    if (!checks.addModeCheck(fn)) throw new Error("expected a function");
   });
 
   // Several frequencies at once: hear every joined one, talk on the active one.
@@ -150,8 +148,7 @@ export function registerServerExports(s: Services): void {
 
   // Phone: client joins need a check; the loudspeaker lets players nearby hear the call.
   registerExport("addCallCheck", (fn: unknown) => {
-    if (!checks.addCallCheck(fn))
-      throw new Error("expected a function");
+    if (!checks.addCallCheck(fn)) throw new Error("expected a function");
   });
   registerExport("setPlayerCallSpeaker", (source: unknown, on: unknown) => {
     const src = toSource(source);

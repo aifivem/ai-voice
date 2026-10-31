@@ -2,6 +2,7 @@ import {
   cache,
   fromServer,
   Keybind,
+  medical,
   onServerEvent,
   TickLoop,
 } from "@aicore-fivem/lib/client";
@@ -167,7 +168,7 @@ class Radio {
       state.radioChannel > 0 &&
       deadBag.get(cache.serverId) !== true &&
       pmaDeadBag.get(cache.serverId) !== true &&
-      !IsPlayerDead(cache.playerId)
+      !medical.isDead()
     );
   }
 

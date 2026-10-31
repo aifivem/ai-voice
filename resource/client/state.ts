@@ -21,7 +21,10 @@ import {
 export const log = createLogger(ResourceName);
 export const backendKey = new GlobalKey(KEYS.backend, parseBackend);
 export const takeoverKey = new GlobalKey(KEYS.takeover, parseTakeover);
-export const proximityBag = new PlayerState(PLAYER_BAGS.proximity, parseProximity);
+export const proximityBag = new PlayerState(
+  PLAYER_BAGS.proximity,
+  parseProximity,
+);
 export const deadBag = new PlayerState(PLAYER_BAGS.dead, stateBoolean);
 export const pmaDeadBag = new PlayerState(KEYS.isDead, stateBoolean);
 export const submixBag = new PlayerState(KEYS.submix, stateString);

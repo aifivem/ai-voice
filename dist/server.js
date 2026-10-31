@@ -280,6 +280,8 @@ const CORE = {
 	vehicleTypeCallback: "ai-core:vehicleType",
 	interactionStateKey: "ai:interaction",
 	pvpStateKey: "ai:pvp",
+	medicalStateKey: "ai:medical",
+	clientDeadEvent: "ai-core:client:dead",
 	charactersCallback: "ai-core:characters",
 	createCharacterCallback: "ai-core:createCharacter",
 	deleteCharacterCallback: "ai-core:deleteCharacter",
@@ -1003,6 +1005,9 @@ var OnlinePlayers = class {
 	character(source) {
 		return this.start(), this.players.get(source)?.character ?? null;
 	}
+	charId(source) {
+		return this.start(), this.players.get(source)?.character.id;
+	}
 	name(source, options = {}) {
 		let c = this.character(source);
 		return c ? `${c.firstname} ${c.lastname}` : options.fallback === !1 ? "" : GetPlayerName(String(source));
@@ -1071,8 +1076,8 @@ function within(point, radius, candidates) {
 function playersNear(source, radius) {
 	return within(coordsOf(source), radius, [source, ...core$11.GetPlayersInScope(source)]);
 }
-createLogger(GetCurrentResourceName());
-const dropped = new Set();
+// ../../../packages/lib/src/server/players.ts
+const log$10 = createLogger(GetCurrentResourceName()), dropped = new Set();
 let listening$1 = !1;
 function onDropped(fn) {
 	listening$1 || (listening$1 = !0, on("playerDropped", () => {
@@ -1089,6 +1094,35 @@ var PlayerMap = class extends Map {
 		});
 	}
 };
+function onCharacter(handlers) {
+	let live = new Map(), deliver = (source, character) => {
+		if (live.set(source, character.id), handlers.loaded) try {
+			let result = handlers.loaded(source, character);
+			result instanceof Promise && result.catch((error) => log$10.error(`character loaded handler failed for ${source}`, error));
+		} catch (error) {
+			log$10.error(`character loaded handler failed for ${source}`, error);
+		}
+	}, end = (source, charId, reason) => {
+		if (live.delete(source)) try {
+			handlers.unloaded?.(source, charId, reason);
+		} catch (error) {
+			log$10.error(`character unloaded handler failed for ${source}`, error);
+		}
+	};
+	on(CORE.playerLoadedEvent, (source, character) => {
+		let previous = live.get(source);
+		previous !== void 0 && end(source, previous, "switch"), deliver(source, character);
+	}), on(CORE.playerUnloadedEvent, (source, charId, reason) => end(source, charId, reason === "dropped" ? "dropped" : "switch")), onDropped((source) => setImmediate(() => {
+		let charId = live.get(source);
+		charId !== void 0 && end(source, charId, "dropped");
+	})), setImmediate(() => {
+		for (let source of online.sources()) {
+			if (live.has(source)) continue;
+			let character = online.character(source);
+			character && deliver(source, character);
+		}
+	});
+}
 // ../../../packages/lib/src/server/progressFor.ts
 const running = new PlayerMap({ onDrop: (_source, settle) => settle(!1) });
 on(CORE.playerUnloadedEvent, (source) => {
@@ -1231,7 +1265,7 @@ function caller() {
 }
 const stopHandlers = [];
 let listening = !1;
-function onStop(handler) {
+function onAnyStop(handler) {
 	if (stopHandlers.push(handler), listening) return;
 	listening = !0;
 	let event = IsDuplicityVersion() ? "onResourceStop" : "onClientResourceStop";
@@ -1239,12 +1273,18 @@ function onStop(handler) {
 		for (let stop of stopHandlers) stop(resource);
 	});
 }
+function onStop(fn) {
+	let self = GetCurrentResourceName();
+	onAnyStop((resource) => {
+		resource === self && fn();
+	});
+}
 var ByResource = class {
 	options;
 	byOwner = new Map();
 	owners = new Map();
 	constructor(options = {}) {
-		this.options = options, onStop((resource) => this.dropResource(resource));
+		this.options = options, onAnyStop((resource) => this.dropResource(resource));
 	}
 	set(key, value, owner = caller()) {
 		let previous = this.owners.get(key);
@@ -3010,7 +3050,10 @@ on("playerJoining", () => join(eventSource())), players.onDrop((player) => {
 const recheck = (source) => {
 	typeof source == "number" && setTimeout(() => groups.recheck(source), 0);
 };
-on(CORE.jobsChangedEvent, recheck), on(CORE.dutyChangedEvent, recheck), on(CORE.gangsChangedEvent, recheck), on(CORE.playerUnloadedEvent, recheck), on(CORE.playerLoadedEvent, recheck), content.onFrequencies(() => {
+on(CORE.jobsChangedEvent, recheck), on(CORE.dutyChangedEvent, recheck), on(CORE.gangsChangedEvent, recheck), onCharacter({
+	loaded: recheck,
+	unloaded: recheck
+}), content.onFrequencies(() => {
 	for (let player of players.all()) groups.recheck(player.source);
 }), content.onSettings((next, old) => {
 	JSON.stringify(next.modes) !== JSON.stringify(old.modes) && players.reload(), next.backend !== old.backend && log.warn("the voice backend changes on the next start of ai-voice");
@@ -3046,6 +3089,4 @@ onClientEvent(EVENTS.setMode, {
 }), onClientEvent(EVENTS.setSpeaker, {
 	args: toBool,
 	rate: perSecond(2)
-}, (source, on) => speakers.set(source, on)), on("onResourceStop", (resource) => {
-	resource === ResourceName && router.stop();
-});
+}, (source, on) => speakers.set(source, on)), onStop(() => router.stop());

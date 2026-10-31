@@ -2,7 +2,9 @@ import {
   aiLogChannels,
   eventSource,
   GlobalKey,
+  onCharacter,
   onClientEvent,
+  onStop,
 } from "@aicore-fivem/lib/server";
 import { asArgs, createLogger } from "@aicore-fivem/lib/shared";
 import { CORE } from "@aicore-fivem/shared";
@@ -87,8 +89,7 @@ const recheck = (source: unknown) => {
 on(CORE.jobsChangedEvent, recheck);
 on(CORE.dutyChangedEvent, recheck);
 on(CORE.gangsChangedEvent, recheck);
-on(CORE.playerUnloadedEvent, recheck);
-on(CORE.playerLoadedEvent, recheck);
+onCharacter({ loaded: recheck, unloaded: recheck });
 content.onFrequencies(() => {
   for (const player of players.all()) groups.recheck(player.source);
 });
@@ -170,6 +171,4 @@ onClientEvent(
   (source, on) => speakers.set(source, on),
 );
 
-on("onResourceStop", (resource: string) => {
-  if (resource === ResourceName) router.stop();
-});
+onStop(() => router.stop());
