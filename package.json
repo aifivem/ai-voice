@@ -1,6 +1,6 @@
 {
   "name": "ai-voice",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Proximity voice, radio and phone calls on FiveM Legacy (Mumble) and FiveM Enhanced (server voice channels), stands in for pma-voice",
   "license": "GPL-3.0-only",

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/aifivem/ai-voice/compare/v0.1.1...v0.1.2) (2026-10-31)
+
+
+### Miscellaneous Chores
+
+* rebuild with the current lib ([15eb431](https://github.com/aifivem/ai-voice/commit/15eb431574a1981fbdd0f160721007fb47b5e3a7))
+
 ## [0.1.1](https://github.com/aifivem/ai-voice/compare/v0.1.0...v0.1.1) (2026-10-31)
 
 
