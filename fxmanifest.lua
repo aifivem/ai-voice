@@ -1,6 +1,6 @@
 name 'ai-voice'
 author 'TGIANN'
-version '0.1.0'
+version '0.1.0' -- x-release-please-version
 license 'GPL-3.0-only'
 description 'Proximity voice, radio and phone calls on FiveM Legacy (Mumble) and FiveM Enhanced (server voice channels), stands in for pma-voice'
 repository 'https://github.com/aifivem/ai-voice'
