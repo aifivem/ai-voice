@@ -1474,14 +1474,23 @@ var Mirror = class {
 		let old = this.values.get(id);
 		if (this.values.set(id, value), old !== value) for (let listener of this.listeners) listener(id, value, old);
 	}
-}, PlayerState$1 = class extends Mirror {
+};
+const playerStates = new Set();
+let dropListener = !1;
+var PlayerState$1 = class extends Mirror {
 	seen = new Set();
 	constructor(key, parse) {
 		super(key, parse), AddStateBagChangeHandler(key, "", (bag, _key, value) => {
 			if (!bag.startsWith("player:")) return;
 			let id = Number(bag.slice(7));
 			this.seen.add(id), this.store(id, value);
-		}), isServer && on("playerDropped", () => this.forget(Number(globalThis.source)));
+		}), isServer && (playerStates.add(this), dropListener || (dropListener = !0, on("playerDropped", () => {
+			let id = Number(globalThis.source);
+			for (let state of playerStates) state.dropPlayer(id);
+		})));
+	}
+	dropPlayer(serverId) {
+		this.forget(serverId);
 	}
 	get(serverId) {
 		if (!this.seen.has(serverId)) {
