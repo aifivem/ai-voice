@@ -74,12 +74,10 @@ function join(source: number): void {
 for (const id of getPlayers()) join(Number(id));
 
 on("playerJoining", () => join(eventSource()));
-on("playerDropped", () => {
-  const source = eventSource();
-  speakers.drop(source);
-  groups.drop(source);
-  mutes.drop(source);
-  players.drop(source);
+// The voice stores are lib PlayerMaps; a drop turns the speaker off first, then leaves frequencies and the call.
+players.onDrop((player) => {
+  speakers.drop(player);
+  groups.drop(player);
 });
 
 // Job frequencies are checked again when jobs, duty or the character change (after lib `online` saw the change).

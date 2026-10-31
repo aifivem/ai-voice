@@ -1,4 +1,5 @@
 import {
+  PlayerMap,
   PlayerState,
   stateBoolean,
   stateNumber,
@@ -15,7 +16,10 @@ import { checks } from "./checks";
 import { content } from "./content";
 import type { Router, Talker } from "./router";
 
-export const proximityBag = new PlayerState(PLAYER_BAGS.proximity, parseProximity);
+export const proximityBag = new PlayerState(
+  PLAYER_BAGS.proximity,
+  parseProximity,
+);
 export const radioBag = new PlayerState(KEYS.radioChannel, stateNumber);
 export const callBag = new PlayerState(KEYS.callChannel, stateNumber);
 export const mutedBag = new PlayerState(KEYS.muted, stateBoolean);
@@ -53,9 +57,20 @@ export class VoicePlayer implements Talker {
 
 /** Every connected player's voice state by server id (cleared on drop: Enhanced reuses ids). */
 export class Players {
-  private readonly players = new Map<number, VoicePlayer>();
+  private readonly dropHooks: Array<(player: VoicePlayer) => void> = [];
+  private readonly players = new PlayerMap<VoicePlayer>({
+    onDrop: (source, player) => {
+      for (const hook of this.dropHooks) hook(player);
+      this.router.forget(source);
+    },
+  });
 
   constructor(private readonly router: Router) {}
+
+  /** Runs when a player drops, in registration order, after the player left this map. */
+  onDrop(hook: (player: VoicePlayer) => void): void {
+    this.dropHooks.push(hook);
+  }
 
   get(source: number): VoicePlayer | undefined {
     return this.players.get(source);
@@ -77,11 +92,6 @@ export class Players {
     speakerBag.set(source, false);
     this.router.join(player);
     return player;
-  }
-
-  drop(source: number): void {
-    this.players.delete(source);
-    this.router.forget(source);
   }
 
   /** A range of the panel (1-based); false when it does not exist or a script refused it. */

@@ -43,8 +43,8 @@ function bool(value, fallback) {
 function str(value, fallback, max = 64) {
 	return typeof value == "string" && value.trim() ? value.trim().slice(0, max) : fallback;
 }
-// ../../../packages/lib/src/shared/records.ts
-const isObject = (value) => typeof value == "object" && !!value && !Array.isArray(value);
+// ../../../packages/lib/src/shared/access.ts
+const isPublic = (rule) => rule.jobs.length === 0 && rule.gangs.length === 0, isObject = (value) => typeof value == "object" && !!value && !Array.isArray(value);
 function readRecords(raw, readOne) {
 	let out = new Map();
 	if (!isObject(raw)) return out;
@@ -237,6 +237,7 @@ const CORE = {
 }, ADMIN = {
 	ace: "ai.admin",
 	openCallback: "ai-core:admin:open",
+	panelDataCallback: "ai-core:admin:panelData",
 	applyCallback: "ai-core:admin:apply",
 	closeEvent: "ai-core:admin:close",
 	showEvent: "ai-core:admin:show",
@@ -412,7 +413,7 @@ function toPatch(value) {
 		default: return null;
 	}
 }
-const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(value)), core$15 = resourceExport(CORE.resource), ERR = {
+const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(value)), core$16 = resourceExport(CORE.resource), ERR = {
 	type: "ADMIN_ERR_TYPE",
 	range: "ADMIN_ERR_RANGE",
 	length: "ADMIN_ERR_LENGTH",
@@ -426,7 +427,7 @@ const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(va
 		if (cached && Date.now() - cached.at < 2e3) return cached.values.size > 0 ? cached.values : null;
 		let list = [];
 		try {
-			list = core$15.GetLookupValues(source);
+			list = core$16.GetLookupValues(source);
 		} catch {}
 		let values = new Set(Array.isArray(list) ? list.filter((v) => typeof v == "string") : []);
 		return this.lists.set(source, {
@@ -691,7 +692,7 @@ function writeSchema(resource, name, text, log) {
 	(0, node_fs_promises.mkdir)(dir, { recursive: !0 }).then(() => (0, node_fs_promises.writeFile)(`${dir}/${name}.schema.json`, text, "utf8")).catch((error) => log.error(`writing ${resource}/${path} failed`, error));
 }
 // ../../../packages/lib/src/server/admin/panel.ts
-const core$14 = resourceExport(CORE.resource);
+const core$15 = resourceExport(CORE.resource);
 var AdminPanel = class {
 	schema;
 	data = new Map();
@@ -707,10 +708,10 @@ var AdminPanel = class {
 	constructor(schema) {
 		this.schema = schema;
 		for (let [name, spec] of Object.entries(schema.files)) this.load(name, spec);
-		registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges), { rate: {
+		registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelSummary", () => this.summary()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges), { rate: {
 			count: 4,
 			windowMs: 1e4
-		} }), setImmediate(() => core$14.RegisterAdminPanel(this.resource));
+		} }), setImmediate(() => core$15.RegisterAdminPanel(this.resource));
 	}
 	get(file) {
 		return this.data.get(file) ?? {};
@@ -736,6 +737,27 @@ var AdminPanel = class {
 			schema: this.schema,
 			texts: loadLocaleTexts(),
 			data: clone(Object.fromEntries(this.data))
+		};
+	}
+	summary() {
+		let data = {}, index = {};
+		for (let [file, spec] of Object.entries(this.schema.files)) {
+			let content = this.data.get(file);
+			if (spec.kind !== "records") {
+				data[file] = clone(content ?? {});
+				continue;
+			}
+			let labels = {};
+			for (let [key, record] of Object.entries(content ?? {})) labels[key] = labelOf(record, spec.labelPath) ?? key;
+			index[file] = labels;
+		}
+		return {
+			resource: this.resource,
+			schema: this.schema,
+			texts: loadLocaleTexts(),
+			data,
+			loaded: !1,
+			index
 		};
 	}
 	apply(admin, raw) {
@@ -800,7 +822,7 @@ var AdminPanel = class {
 		let spec = this.schema.files[file], data = this.get(file), value = key === void 0 ? data : data[key] ?? null;
 		this.dataFiles.get(file)?.write(data), this.views.changed(file, key, value);
 		for (let handler of this.handlers.get(file) ?? []) handler(key, value);
-		if (core$14.AdminPanelChanged({
+		if (core$15.AdminPanelChanged({
 			resource: this.resource,
 			file,
 			key,
@@ -821,6 +843,15 @@ var AdminPanel = class {
 		this.data.set(name, data), (filled || raw === null || !file.hasSchemaRef()) && file.write(data);
 	}
 };
+function labelOf(record, path) {
+	if (!path) return null;
+	let at = record;
+	for (let part of path.split(".")) {
+		if (typeof at != "object" || !at) return null;
+		at = at[part];
+	}
+	return typeof at == "string" && at !== "" ? at : null;
+}
 // ../../../packages/lib/src/server/log.ts
 function aiLog(channel, message, options) {
 	optionalExport("ai-core")?.Log(channel, message, options);
@@ -839,7 +870,7 @@ function notify(source, text, kind = "info", duration) {
 }
 resourceExport(CORE.resource);
 // ../../../packages/lib/src/server/online.ts
-const core$12 = resourceExport(CORE.resource);
+const core$13 = resourceExport(CORE.resource);
 function reindex(index, source, before, after) {
 	for (let name of before) {
 		let set = index.get(name);
@@ -867,11 +898,11 @@ var OnlinePlayers = class {
 				gangs: [],
 				gangNames: [],
 				duty: null
-			}), this.setJobs(source, core$12.GetJobs(source) ?? []), this.setGangs(source, core$12.GetGangs(source) ?? []), this.setDuty(source, core$12.GetDutyJob(source));
+			}), this.setJobs(source, core$13.GetJobs(source) ?? []), this.setGangs(source, core$13.GetGangs(source) ?? []), this.setDuty(source, core$13.GetDutyJob(source));
 		};
 		on(CORE.playerLoadedEvent, load), on(CORE.playerUnloadedEvent, (source) => this.drop(source)), on(CORE.jobsChangedEvent, (source, jobs) => this.setJobs(source, jobs)), on(CORE.gangsChangedEvent, (source, gangs) => this.setGangs(source, gangs)), on(CORE.dutyChangedEvent, (source, job) => this.setDuty(source, job));
-		for (let source of core$12.GetLoadedSources()) {
-			let character = core$12.GetCharacter(source);
+		for (let source of core$13.GetLoadedSources()) {
+			let character = core$13.GetCharacter(source);
 			character && load(source, character);
 		}
 	}
@@ -940,6 +971,20 @@ var OnlinePlayers = class {
 		let duty = this.dutyJob(source);
 		return duty !== null && jobs.includes(duty);
 	}
+	allows(source, rule) {
+		if (isPublic(rule)) return !0;
+		let min = (name) => rule.grades[name] ?? 0;
+		for (let gang of rule.gangs) {
+			let grade = this.gangGrade(source, gang);
+			if (grade !== null && grade >= min(gang)) return !0;
+		}
+		let duty = rule.onDuty ? this.dutyJob(source) : null;
+		for (let job of rule.jobs) {
+			let grade = this.jobGrade(source, job);
+			if (grade !== null && grade >= min(job) && (!rule.onDuty || duty === job)) return !0;
+		}
+		return !1;
+	}
 	countOnDuty(jobs) {
 		this.start();
 		let count = 0;
@@ -953,7 +998,7 @@ var OnlinePlayers = class {
 const EMPTY = new Set(), online = new OnlinePlayers();
 resourceExport(CORE.resource);
 // ../../../packages/lib/src/server/proximity.ts
-const core$10 = resourceExport(CORE.resource);
+const core$11 = resourceExport(CORE.resource);
 function within(point, radius, candidates) {
 	let out = [];
 	for (let source of candidates) {
@@ -963,7 +1008,7 @@ function within(point, radius, candidates) {
 	return out;
 }
 function playersNear(source, radius) {
-	return within(coordsOf(source), radius, [source, ...core$10.GetPlayersInScope(source)]);
+	return within(coordsOf(source), radius, [source, ...core$11.GetPlayersInScope(source)]);
 }
 createLogger(GetCurrentResourceName());
 const dropped = new Set();
@@ -974,8 +1019,7 @@ function onDropped(fn) {
 		for (let handler of dropped) handler(source);
 	})), dropped.add(fn);
 }
-// ../../../packages/lib/src/server/progressFor.ts
-const running = new class extends Map {
+var PlayerMap = class extends Map {
 	constructor(options = {}) {
 		super(), onDropped((source) => {
 			if (!this.has(source)) return;
@@ -983,11 +1027,32 @@ const running = new class extends Map {
 			this.delete(source), options.onDrop?.(source, value);
 		});
 	}
-}({ onDrop: (_source, settle) => settle(!1) });
+};
+// ../../../packages/lib/src/server/progressFor.ts
+const running = new PlayerMap({ onDrop: (_source, settle) => settle(!1) });
 on(CORE.playerUnloadedEvent, (source) => {
 	let settle = running.get(source);
 	settle && settle(!1);
 });
+// ../../../packages/lib/src/server/definitions.ts
+const core$10 = resourceExport("ai-core");
+new class {
+	jobs = new Map();
+	gangs = new Map();
+	constructor() {
+		on(CORE.definitionsChangedEvent, (file, name) => {
+			typeof name == "string" && (file === "jobs" ? this.jobs.delete(name) : file === "gangs" && this.gangs.delete(name));
+		});
+	}
+	job(name) {
+		let def = this.jobs.get(name);
+		return def === void 0 && this.jobs.set(name, def = core$10.GetJobDefinition(name) ?? null), def;
+	}
+	gang(name) {
+		let def = this.gangs.get(name);
+		return def === void 0 && this.gangs.set(name, def = core$10.GetGangDefinition(name) ?? null), def;
+	}
+}();
 // ../../../packages/lib/src/server/command.ts
 const resource = GetCurrentResourceName(), log$9 = createLogger(resource);
 let texts = null;
@@ -2504,9 +2569,16 @@ var VoicePlayer = class {
 	}
 }, Players = class {
 	router;
-	players = new Map();
+	dropHooks = [];
+	players = new PlayerMap({ onDrop: (source, player) => {
+		for (let hook of this.dropHooks) hook(player);
+		this.router.forget(source);
+	} });
 	constructor(router) {
 		this.router = router;
+	}
+	onDrop(hook) {
+		this.dropHooks.push(hook);
 	}
 	get(source) {
 		return this.players.get(source);
@@ -2519,9 +2591,6 @@ var VoicePlayer = class {
 		if (existing) return existing;
 		let player = new VoicePlayer(source);
 		return this.players.set(source, player), proximityBag.set(source, player.proximity()), radioBag.set(source, 0), callBag.set(source, 0), mutedBag.set(source, !1), speakerBag.set(source, !1), this.router.join(player), player;
-	}
-	drop(source) {
-		this.players.delete(source), this.router.forget(source);
 	}
 	setMode(source, index) {
 		let player = this.players.get(source);
@@ -2578,7 +2647,11 @@ var Groups = class {
 		return player?.radios.has(channel) ? (this.activate(player, channel), !0) : !1;
 	}
 	setRadioTalking(source, talking) {
-		let channel = this.players.get(source)?.radio ?? 0, members = this.radios.get(channel);
+		let player = this.players.get(source);
+		player && this.talk(player, talking);
+	}
+	talk(player, talking) {
+		let { source, radio: channel } = player, members = this.radios.get(channel);
 		if (members?.has(source) && members.get(source) !== talking) {
 			members.set(source, talking);
 			for (let member of members.keys()) member !== source && emitNet(PMA.setTalkingOnRadio, member, source, talking, channel);
@@ -2612,19 +2685,16 @@ var Groups = class {
 		for (let channel of player.radios) checks.jobAllows(source, channel) || (left = !0, this.listen(source, channel, !1));
 		left && notify(source, Locale("NOTIFY_RADIO_REVOKED"), "error");
 	}
-	drop(source) {
-		let player = this.players.get(source);
-		if (player) {
-			for (let channel of player.radios) this.leaveRadio(player, channel);
-			player.call !== 0 && this.leaveCall(source, player.call);
-		}
+	drop(player) {
+		for (let channel of player.radios) this.leaveRadio(player, channel);
+		player.call !== 0 && this.leaveCall(player.source, player.call);
 	}
 	describe() {
 		let line = (kind, map) => [...map].map(([id, m]) => `${kind} ${id}: ${[...m.keys()].join(",")}`);
 		return [...line("radio", this.radios), ...line("call", this.calls)];
 	}
 	activate(player, channel) {
-		player.radio !== channel && (this.setRadioTalking(player.source, !1), player.radio = channel), emitNet(PMA.clSetPlayerRadio, player.source, channel), radioBag.set(player.source, channel);
+		player.radio !== channel && (this.talk(player, !1), player.radio = channel), emitNet(PMA.clSetPlayerRadio, player.source, channel), radioBag.set(player.source, channel);
 	}
 	refuse(player) {
 		emitNet(PMA.removePlayerFromRadio, player.source, player.source, 0), notify(player.source, Locale("NOTIFY_RADIO_DENIED"), "error"), radioBag.set(player.source, player.radio);
@@ -2639,7 +2709,7 @@ var Groups = class {
 	leaveRadio(player, channel) {
 		let members = this.radios.get(channel);
 		if (player.radios.delete(channel), members) {
-			player.radio === channel && this.setRadioTalking(player.source, !1);
+			player.radio === channel && this.talk(player, !1);
 			for (let member of members.keys()) emitNet(PMA.removePlayerFromRadio, member, player.source, channel);
 			members.delete(player.source), members.size === 0 && this.radios.delete(channel), this.router.radioLeave(player.source, channel);
 		}
@@ -2663,7 +2733,7 @@ const licenseOf = (source) => GetPlayerIdentifierByType(String(source), "license
 var Mutes = class {
 	players;
 	mutes = new Map();
-	online = new Map();
+	online = new PlayerMap();
 	constructor(players) {
 		this.players = players;
 	}
@@ -2682,9 +2752,6 @@ var Mutes = class {
 	join(source) {
 		let license = licenseOf(source), mute = this.mutes.get(license);
 		mute && mute.until > Date.now() && this.apply(source, license, !0);
-	}
-	drop(source) {
-		this.online.delete(source);
 	}
 	apply(source, license, muted) {
 		muted ? this.online.set(source, license) : this.online.delete(source), this.players.setMuted(source, muted);
@@ -2740,7 +2807,7 @@ var Speakers = class {
 	groups;
 	router;
 	holders = new Map();
-	sent = new Map();
+	sent = new PlayerMap();
 	timer = every(1e3, () => this.update(), {
 		active: !1,
 		name: "speakers"
@@ -2755,15 +2822,19 @@ var Speakers = class {
 	}
 	set(source, on) {
 		let player = this.players.get(source);
-		return !player || on && (!content.settings.speaker || player.call === 0) ? !1 : (on === this.holders.has(source) || (player.speaker = on, speakerBag.set(source, on), on ? this.holders.set(source, {
+		return player ? this.apply(player, on) : !1;
+	}
+	drop(player) {
+		let source = player.source;
+		this.holders.has(source) && this.apply(player, !1);
+		for (let holder of this.holders.values()) holder.near.delete(source);
+	}
+	apply(player, on) {
+		let source = player.source;
+		return on && (!content.settings.speaker || player.call === 0) ? !1 : (on === this.holders.has(source) || (player.speaker = on, speakerBag.set(source, on), on ? this.holders.set(source, {
 			call: player.call,
 			near: new Set()
 		}) : (this.place(source, new Set()), this.holders.delete(source)), this.update(), this.timer.set(this.holders.size > 0)), !0);
-	}
-	drop(source) {
-		this.holders.has(source) && this.set(source, !1);
-		for (let holder of this.holders.values()) holder.near.delete(source);
-		this.sent.delete(source);
 	}
 	update() {
 		let radius = content.settings.speakerRadius;
@@ -2850,9 +2921,8 @@ function join(source) {
 	players.join(source), mutes.join(source), mode !== void 0 && players.setMode(source, mode), radio > 0 && groups.setRadio(source, radio), call > 0 && groups.setCall(source, call, !0);
 }
 for (let id of getPlayers()) join(Number(id));
-on("playerJoining", () => join(eventSource())), on("playerDropped", () => {
-	let source = eventSource();
-	speakers.drop(source), groups.drop(source), mutes.drop(source), players.drop(source);
+on("playerJoining", () => join(eventSource())), players.onDrop((player) => {
+	speakers.drop(player), groups.drop(player);
 });
 const recheck = (source) => {
 	typeof source == "number" && setTimeout(() => groups.recheck(source), 0);

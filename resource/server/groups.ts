@@ -72,7 +72,13 @@ export class Groups {
   }
 
   setRadioTalking(source: number, talking: boolean): void {
-    const channel = this.players.get(source)?.radio ?? 0;
+    const player = this.players.get(source);
+    if (player) this.talk(player, talking);
+  }
+
+  /** Talking on the active frequency (the player may already have left `players` while dropping). */
+  private talk(player: VoicePlayer, talking: boolean): void {
+    const { source, radio: channel } = player;
     const members = this.radios.get(channel);
     if (!members?.has(source) || members.get(source) === talking) return;
     members.set(source, talking);
@@ -130,11 +136,9 @@ export class Groups {
   }
 
   /** The player left: tell the members of their frequencies and call. */
-  drop(source: number): void {
-    const player = this.players.get(source);
-    if (!player) return;
+  drop(player: VoicePlayer): void {
     for (const channel of player.radios) this.leaveRadio(player, channel);
-    if (player.call !== 0) this.leaveCall(source, player.call);
+    if (player.call !== 0) this.leaveCall(player.source, player.call);
   }
 
   describe(): string[] {
@@ -146,7 +150,7 @@ export class Groups {
   /** The frequency push-to-talk sends on; the client is always told (it never guesses). */
   private activate(player: VoicePlayer, channel: number): void {
     if (player.radio !== channel) {
-      this.setRadioTalking(player.source, false);
+      this.talk(player, false);
       player.radio = channel;
     }
     emitNet(PMA.clSetPlayerRadio, player.source, channel);
@@ -176,7 +180,7 @@ export class Groups {
     const members = this.radios.get(channel);
     player.radios.delete(channel);
     if (!members) return;
-    if (player.radio === channel) this.setRadioTalking(player.source, false);
+    if (player.radio === channel) this.talk(player, false);
     for (const member of members.keys())
       emitNet(PMA.removePlayerFromRadio, member, player.source, channel);
     members.delete(player.source);

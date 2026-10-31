@@ -1,4 +1,4 @@
-import { aiLog, notify } from "@aicore-fivem/lib/server";
+import { aiLog, notify, PlayerMap } from "@aicore-fivem/lib/server";
 import { Locale, PMA } from "common";
 import type { Players } from "./players";
 
@@ -19,8 +19,8 @@ const licenseOf = (source: number): string =>
 /** Admin mutes (pma-voice `/muteply`: a toggle, 900 s by default), kept by license until they run out. */
 export class Mutes {
   private readonly mutes = new Map<string, Mute>();
-  /** The license of each connected muted player (drop does not need a native call). */
-  private readonly online = new Map<number, string>();
+  /** The license of each connected muted player (drop does not need a native call; the mute stays with the license). */
+  private readonly online = new PlayerMap<string>();
 
   constructor(private readonly players: Players) {}
 
@@ -51,11 +51,6 @@ export class Mutes {
     const license = licenseOf(source);
     const mute = this.mutes.get(license);
     if (mute && mute.until > Date.now()) this.apply(source, license, true);
-  }
-
-  /** The player left: the mute stays with the license, the server id is forgotten. */
-  drop(source: number): void {
-    this.online.delete(source);
   }
 
   private apply(source: number, license: string, muted: boolean): void {

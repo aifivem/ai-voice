@@ -35,6 +35,7 @@ Proximity voice with ranges, radio (several frequencies at once, push-to-talk on
 - `AddPlayerToVoiceChannel` on a member resets its muted and deaf state: `VoiceChannel` never re-adds.
 - A restart of ai-voice keeps the player bags: the server reads range, active frequency and call back from them at start (listened frequencies and loudspeakers are not kept).
 - `provide` lines need a full server start before `GetResourceState("pma-voice")` reports started.
+- Per-player stores are lib `PlayerMap`s, no `playerDropped` handler. Cleanup that needs the player (loudspeaker, frequencies, call) hooks `players.onDrop((player) => ...)`, which runs after the player left `Players`: work from the `VoicePlayer` it hands over, never `players.get(source)` there.
 - Settings commits from ai-voice itself (convar seeding, the status sections) run in `setImmediate`: the commit calls ai-core's export.
 
 ## Entry points

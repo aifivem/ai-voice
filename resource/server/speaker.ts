@@ -1,8 +1,8 @@
-import { every, playersNear } from "@aicore-fivem/lib/server";
+import { every, PlayerMap, playersNear } from "@aicore-fivem/lib/server";
 import { EVENTS } from "common";
 import { content } from "./content";
 import type { Groups } from "./groups";
-import { speakerBag, type Players } from "./players";
+import { speakerBag, type Players, type VoicePlayer } from "./players";
 import type { Router } from "./router";
 
 /** What one client's loudspeaker audio is: whom to reach, whom to hear as a call or as a loudspeaker. */
@@ -29,7 +29,7 @@ interface Holder {
 export class Speakers {
   private readonly holders = new Map<number, Holder>();
   /** Per client: the audio last sent (Mumble). */
-  private readonly sent = new Map<number, string>();
+  private readonly sent = new PlayerMap<string>();
   private readonly timer = every(1000, () => this.update(), {
     active: false,
     name: "speakers",
@@ -53,7 +53,18 @@ export class Speakers {
   /** Loudspeaker on / off for a player in a call. */
   set(source: number, on: boolean): boolean {
     const player = this.players.get(source);
-    if (!player) return false;
+    return player ? this.apply(player, on) : false;
+  }
+
+  /** The player left (already gone from `players`): their speaker goes off, they stop being a bystander. */
+  drop(player: VoicePlayer): void {
+    const source = player.source;
+    if (this.holders.has(source)) this.apply(player, false);
+    for (const holder of this.holders.values()) holder.near.delete(source);
+  }
+
+  private apply(player: VoicePlayer, on: boolean): boolean {
+    const source = player.source;
     if (on && (!content.settings.speaker || player.call === 0)) return false;
     if (on === this.holders.has(source)) return true;
     player.speaker = on;
@@ -66,13 +77,6 @@ export class Speakers {
     this.update();
     this.timer.set(this.holders.size > 0);
     return true;
-  }
-
-  /** The player left. */
-  drop(source: number): void {
-    if (this.holders.has(source)) this.set(source, false);
-    for (const holder of this.holders.values()) holder.near.delete(source);
-    this.sent.delete(source);
   }
 
   private update(): void {
