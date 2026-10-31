@@ -1,4 +1,13 @@
-import { bool, int, isRecord, num, str } from "@aicore-fivem/lib/shared";
+import {
+  bool,
+  int,
+  isRecord,
+  num,
+  readAccess,
+  str,
+  type AccessRule,
+  type RecordReader,
+} from "@aicore-fivem/lib/shared";
 
 /** ai-voice's own events. */
 export const EVENTS = {
@@ -223,41 +232,34 @@ export function animOf(settings: Settings, name: string): Anim | null {
   return set ?? null;
 }
 
-/** A frequency span of the panel: optional jobs, optional animation. */
+/** A frequency span of the panel: optional access rule, optional animation. */
 export interface Frequency {
   label: string;
   from: number;
   to: number;
-  jobs: string[];
-  onDuty: boolean;
+  /** Who may join (the record's `jobs` / `gangs` / `onDuty`; on duty when the record does not say). */
+  access: AccessRule;
   /** "" = the default animation, "none", or a set name. */
   anim: string;
 }
 
-export function readFrequencies(raw: Record<string, unknown>): Frequency[] {
-  const list: Frequency[] = [];
-  for (const value of Object.values(raw)) {
-    if (!isRecord(value)) continue;
-    list.push({
-      label: str(value.label, "", 48),
-      from: num(value.from, 0),
-      to: num(value.to, 0),
-      jobs: Array.isArray(value.jobs)
-        ? value.jobs.filter((j): j is string => typeof j === "string")
-        : [],
-      onDuty: bool(value.onDuty, true),
-      anim: typeof value.anim === "string" ? value.anim : "",
-    });
-  }
-  return list;
-}
+/** One frequency record (`records("channels", readFrequency)`). */
+export const readFrequency: RecordReader<Frequency> = (_key, value) => ({
+  label: str(value.label, "", 48),
+  from: num(value.from, 0),
+  to: num(value.to, 0),
+  access: { ...readAccess(value), onDuty: bool(value.onDuty, true) },
+  anim: typeof value.anim === "string" ? value.anim : "",
+});
 
 /** The frequency span covering a channel, if any. */
-export const frequencyOf = (
-  list: readonly Frequency[],
+export function frequencyOf(
+  list: Iterable<Frequency>,
   channel: number,
-): Frequency | undefined =>
-  list.find((f) => channel >= f.from && channel <= f.to);
+): Frequency | undefined {
+  for (const f of list) if (channel >= f.from && channel <= f.to) return f;
+  return undefined;
+}
 
 /** The `proximity` bag value of a mode index (1-based) of the settings. */
 export function proximityOf(settings: Settings, index: number): Proximity {

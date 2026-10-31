@@ -1,4 +1,4 @@
-import { registerExport } from "@aicore-fivem/lib/client";
+import { caller, registerExport } from "@aicore-fivem/lib/client";
 import { PMA } from "common";
 import { effects } from "./effects";
 import { log } from "./state";
@@ -6,8 +6,6 @@ import { submixes, toSubmixSpec } from "./submixes";
 
 // oxlint-disable-next-line typescript/no-explicit-any -- export arguments come from any resource; each is parsed below
 type Handler = (...args: any[]) => unknown;
-
-const invoker = (): string => GetInvokingResource() ?? "unknown";
 
 /**
  * Submixes through ai-voice (the game has 40 slots, shared with its own audio, and none can be deleted): create
@@ -18,7 +16,7 @@ export function registerSubmixExports(
 ): void {
   registerExport("createSubmix", (name: unknown, spec: unknown) => {
     if (typeof name !== "string" || !name) throw new Error("'name' expected");
-    return submixes.create(name, toSubmixSpec(spec), invoker());
+    return submixes.create(name, toSubmixSpec(spec), caller());
   });
   registerExport("getSubmix", (name: unknown) =>
     typeof name === "string" ? submixes.get(name) : -1,
@@ -35,7 +33,7 @@ export function registerSubmixExports(
     if (!Array.isArray(result)) return;
     const [name, id] = result as unknown[];
     if (typeof name === "string" && typeof id === "number")
-      submixes.register(name, id, invoker());
+      submixes.register(name, id, caller());
     else
       log.warn("registerCustomSubmix: the callback must return { name, id }");
   });

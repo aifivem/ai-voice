@@ -1,4 +1,4 @@
-import { online } from "@aicore-fivem/lib/server";
+import { ByResource, caller, online } from "@aicore-fivem/lib/server";
 import { createLogger } from "@aicore-fivem/lib/shared";
 import { ResourceName } from "common";
 import { content } from "./content";
@@ -7,28 +7,15 @@ const log = createLogger(ResourceName);
 
 type Callback = (...args: unknown[]) => unknown;
 
-/** Callbacks other resources registered, keyed by K; dropped when the registering resource stops. */
-class Registered<K> {
-  private readonly entries = new Map<K, { resource: string; fn: Callback }>();
-
-  set(key: K, fn: unknown, resource: string): boolean {
-    if (typeof fn !== "function") return false;
-    this.entries.set(key, { resource, fn: fn as Callback });
-    return true;
-  }
-
-  get(key: K): Callback | undefined {
-    return this.entries.get(key)?.fn;
-  }
-
-  values(): Callback[] {
-    return [...this.entries.values()].map((e) => e.fn);
-  }
-
-  dropResource(resource: string): void {
-    for (const [key, entry] of this.entries)
-      if (entry.resource === resource) this.entries.delete(key);
-  }
+/** Stores a callback another resource registered under the calling resource; false when it is not a function. */
+function register<K>(
+  map: ByResource<K, Callback>,
+  key: K,
+  fn: unknown,
+): boolean {
+  if (typeof fn !== "function") return false;
+  map.set(key, fn as Callback);
+  return true;
 }
 
 /** A callback from another resource: an error there (or its stop) counts as a refusal, never as a crash here. */
@@ -43,41 +30,35 @@ function ask(fn: Callback, ...args: unknown[]): unknown {
 
 /** pma-voice's `addChannelCheck` and `overrideRadioNameGetter`, ai-voice's range and call checks, the panel's job frequencies. */
 class Checks {
-  private readonly radio = new Registered<number>();
-  private readonly modes = new Registered<string>();
-  private readonly names = new Registered<"name">();
-  private readonly calls = new Registered<string>();
-
-  constructor() {
-    on("onResourceStop", (resource: string) => {
-      this.radio.dropResource(resource);
-      this.modes.dropResource(resource);
-      this.names.dropResource(resource);
-      this.calls.dropResource(resource);
-    });
-  }
+  // Callbacks of other resources (the export's caller owns its entry), dropped when that resource stops.
+  private readonly radio = new ByResource<number, Callback>();
+  private readonly modes = new ByResource<string, Callback>();
+  private readonly names = new ByResource<"name", Callback>();
+  private readonly calls = new ByResource<string, Callback>();
 
   /** A phone script's answer to a call join a client asked for: `fn(source, callId) -> true` allows it. */
-  addCallCheck(fn: unknown, resource: string): boolean {
-    return this.calls.set(resource, fn, resource);
+  addCallCheck(fn: unknown): boolean {
+    return register(this.calls, caller(), fn);
   }
 
   /** A client asked to join a call: refused unless a phone script allows it (or the panel lets clients join). */
   canClientJoinCall(source: number, call: number): boolean {
     if (content.settings.clientCalls) return true;
-    return this.calls.values().some((fn) => ask(fn, source, call) === true);
+    for (const fn of this.calls.values())
+      if (ask(fn, source, call) === true) return true;
+    return false;
   }
 
-  addRadioCheck(channel: number, fn: unknown, resource: string): boolean {
-    return this.radio.set(channel, fn, resource);
+  addRadioCheck(channel: number, fn: unknown): boolean {
+    return register(this.radio, channel, fn);
   }
 
-  addModeCheck(fn: unknown, resource: string): boolean {
-    return this.modes.set(resource, fn, resource);
+  addModeCheck(fn: unknown): boolean {
+    return register(this.modes, caller(), fn);
   }
 
-  setNameGetter(fn: unknown, resource: string): boolean {
-    return this.names.set("name", fn, resource);
+  setNameGetter(fn: unknown): boolean {
+    return register(this.names, "name", fn);
   }
 
   /** Whether a player may join a frequency: the panel's job ranges, then a script's check of that frequency. */
@@ -87,20 +68,17 @@ class Checks {
     return !fn || Boolean(ask(fn, source));
   }
 
-  /** The panel's job rule of a frequency (re-checked when jobs or duty change). */
+  /** The panel's access rule of a frequency (re-checked when jobs, duty or gangs change). */
   jobAllows(source: number, channel: number): boolean {
     const rule = content.frequencyOf(channel);
-    if (!rule || rule.jobs.length === 0) return true;
-    return rule.onDuty
-      ? online.onDutyIn(source, rule.jobs)
-      : online.jobs(source).some((job) => rule.jobs.includes(job));
+    return !rule || online.allows(source, rule.access);
   }
 
   /** Whether scripts allow a range change (each registered check must not answer false). */
   canSetRange(source: number, index: number, distance: number): boolean {
-    return this.modes
-      .values()
-      .every((fn) => ask(fn, source, index, distance) !== false);
+    for (const fn of this.modes.values())
+      if (ask(fn, source, index, distance) === false) return false;
+    return true;
   }
 
   /** The name radio members see (`syncNames`): a script's getter, else the character's name. */

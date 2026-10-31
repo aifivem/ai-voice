@@ -1,4 +1,5 @@
 import type { PanelSchema, WidgetSpec } from "@aicore-fivem/shared";
+import { ACCESS_FIELDS, accessFields } from "@aicore-fivem/lib/shared";
 import {
   ANIM_SET_NAMES,
   ANIM_SETS,
@@ -119,8 +120,7 @@ export const schema: PanelSchema = {
         label: { type: "text", min: 1, max: 48 },
         from: { type: "number", min: 0.01, max: CHANNEL_MAX },
         to: { type: "number", min: 0.01, max: CHANNEL_MAX },
-        jobs: { type: "names", max: 20, itemMax: 32, lookup: "job" },
-        onDuty: { type: "bool" },
+        ...ACCESS_FIELDS,
         anim: {
           type: "enum",
           values: ["", "none", ...ANIM_SET_NAMES],
@@ -406,20 +406,7 @@ export const schema: PanelSchema = {
               max: CHANNEL_MAX,
               step: 0.01,
             },
-            {
-              widget: "tags",
-              path: "jobs",
-              label: "ADMIN_F_CHANNEL_JOBS",
-              hint: "ADMIN_H_CHANNEL_JOBS",
-              placeholder: "ADMIN_P_CHANNEL_JOBS",
-              lookup: "job",
-            },
-            {
-              widget: "switch",
-              path: "onDuty",
-              label: "ADMIN_F_CHANNEL_DUTY",
-              hint: "ADMIN_H_CHANNEL_DUTY",
-            },
+            ...accessFields(),
             {
               widget: "select",
               path: "anim",

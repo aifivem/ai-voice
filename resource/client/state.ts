@@ -12,10 +12,9 @@ import {
   parseBackend,
   parseProximity,
   parseTakeover,
-  readFrequencies,
+  readFrequency,
   readSettings,
   ResourceName,
-  type Frequency,
   type Settings,
 } from "common";
 
@@ -71,7 +70,7 @@ export interface SpeakerAudio {
 /** Everything the client halves share: panel content, preferences, frequencies, call, outside routing. */
 class VoiceState {
   settings: Settings = readSettings(world.get("settings"));
-  frequencies: Frequency[] = readFrequencies(world.get("channels"));
+  readonly frequencies = world.records("channels", readFrequency);
   readonly prefs = loadPrefs();
   /** Members (server id -> talking) of every frequency this player hears. */
   readonly radios = new Map<number, Map<number, boolean>>();
@@ -99,9 +98,6 @@ class VoiceState {
     world.onChange("settings", () => {
       this.settings = readSettings(world.get("settings"));
       for (const listener of this.listeners) listener();
-    });
-    world.onChange("channels", () => {
-      this.frequencies = readFrequencies(world.get("channels"));
     });
   }
 

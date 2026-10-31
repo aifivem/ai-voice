@@ -1,4 +1,4 @@
-import { cache, every } from "@aicore-fivem/lib/client";
+import { ByResource, cache, every } from "@aicore-fivem/lib/client";
 import { waitFor } from "@aicore-fivem/lib/shared";
 import { log, proximityBag, state } from "./state";
 
@@ -30,9 +30,8 @@ class MumbleVoice {
     const dz = this.z - (pos[2] ?? 0);
     return dx * dx + dy * dy + dz * dz < this.range2;
   };
-  private check: ProximityCheck = this.defaultCheck;
-  /** The resource that set `check`; its stop brings the default back. */
-  private checkOwner = "";
+  /** A script's check (pma `overrideProximityCheck`), owned by its resource: its stop brings the default back. */
+  private readonly checks = new ByResource<"check", ProximityCheck>();
 
   start(): void {
     if (this.started) return;
@@ -40,10 +39,6 @@ class MumbleVoice {
     on("mumbleConnected", () => void this.joinOwnChannel());
     if (MumbleIsConnected()) void this.joinOwnChannel();
     every(200, () => this.tick(), { name: "mumble" });
-    on("onClientResourceStop", (resource: string) => {
-      // A check from a stopped resource would throw on every tick.
-      if (resource === this.checkOwner) this.resetCheck();
-    });
   }
 
   distance(): number {
@@ -56,15 +51,14 @@ class MumbleVoice {
   }
 
   /** pma-voice `overrideProximityCheck(fn(player) -> boolean)`. */
-  setCheck(fn: unknown, owner: string): void {
+  /** Called from the export: the calling resource owns the check. */
+  setCheck(fn: unknown): void {
     if (typeof fn !== "function") return this.resetCheck();
-    this.check = (player) => Boolean(fn(player));
-    this.checkOwner = owner;
+    this.checks.set("check", (player) => Boolean(fn(player)));
   }
 
   resetCheck(): void {
-    this.check = this.defaultCheck;
-    this.checkOwner = "";
+    this.checks.delete("check");
   }
 
   /** pma-voice `setVoiceState`: "channel" talks only in a script channel, "proximity" goes back. */
@@ -143,8 +137,9 @@ class MumbleVoice {
     MumbleClearVoiceTargetChannels(TARGET);
     const players: unknown = GetActivePlayers();
     if (!Array.isArray(players)) return;
+    const check = this.checks.get("check") ?? this.defaultCheck;
     for (const player of players) {
-      if (typeof player !== "number" || !this.check(player)) continue;
+      if (typeof player !== "number" || !check(player)) continue;
       MumbleAddVoiceTargetChannel(TARGET, GetPlayerServerId(player));
     }
   }

@@ -80,12 +80,13 @@ players.onDrop((player) => {
   groups.drop(player);
 });
 
-// Job frequencies are checked again when jobs, duty or the character change (after lib `online` saw the change).
+// Locked frequencies are checked again when jobs, duty, gangs or the character change (after lib `online` saw it).
 const recheck = (source: unknown) => {
   if (typeof source === "number") setTimeout(() => groups.recheck(source), 0);
 };
 on(CORE.jobsChangedEvent, recheck);
 on(CORE.dutyChangedEvent, recheck);
+on(CORE.gangsChangedEvent, recheck);
 on(CORE.playerUnloadedEvent, recheck);
 on(CORE.playerLoadedEvent, recheck);
 content.onFrequencies(() => {

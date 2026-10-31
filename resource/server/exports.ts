@@ -35,8 +35,6 @@ const toSource = (v: unknown): number | null => {
   return typeof n === "number" && Number.isInteger(n) && n > 0 ? n : null;
 };
 
-const invoker = (): string => GetInvokingResource() ?? "unknown";
-
 function channelArg(value: unknown, what: string): number {
   const channel = toChannel(value);
   if (channel === null) throw new Error(`'${what}' expected a number`);
@@ -68,11 +66,11 @@ export function registerServerExports(s: Services): void {
   both("getPlayersInRadioChannel", members);
   both("GetPlayersInRadioChannel", members);
   both("addChannelCheck", (channel: unknown, fn: unknown) => {
-    if (!checks.addRadioCheck(channelArg(channel, "channel"), fn, invoker()))
+    if (!checks.addRadioCheck(channelArg(channel, "channel"), fn))
       throw new Error("'cb' expected a function");
   });
   both("overrideRadioNameGetter", (_channel: unknown, fn: unknown) => {
-    if (!checks.setNameGetter(fn, invoker()))
+    if (!checks.setNameGetter(fn))
       throw new Error("'cb' expected a function");
   });
   both("isValidPlayer", (source: unknown) => {
@@ -108,7 +106,7 @@ export function registerServerExports(s: Services): void {
     return src !== null && s.mutes.toggle(src, 0, time);
   });
   registerExport("addProximityCheck", (fn: unknown) => {
-    if (!checks.addModeCheck(fn, invoker()))
+    if (!checks.addModeCheck(fn))
       throw new Error("expected a function");
   });
 
@@ -152,7 +150,7 @@ export function registerServerExports(s: Services): void {
 
   // Phone: client joins need a check; the loudspeaker lets players nearby hear the call.
   registerExport("addCallCheck", (fn: unknown) => {
-    if (!checks.addCallCheck(fn, invoker()))
+    if (!checks.addCallCheck(fn))
       throw new Error("expected a function");
   });
   registerExport("setPlayerCallSpeaker", (source: unknown, on: unknown) => {

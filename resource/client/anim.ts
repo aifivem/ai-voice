@@ -22,7 +22,7 @@ class RadioAnim {
     const s = state.settings;
     if (!s.radioAnim || this.disabled) return null;
     if (!s.radioAnimInVehicle && cache.vehicle !== false) return null;
-    const span = frequencyOf(state.frequencies, channel);
+    const span = frequencyOf(state.frequencies.values(), channel);
     return animOf(s, span?.anim || s.radioAnimSet);
   }
 

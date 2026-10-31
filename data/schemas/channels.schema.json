@@ -31,17 +31,23 @@
           "maximum": 1000000
         },
         "jobs": {
-          "description": "Jobs: Only members of these jobs can join; a player who loses the job or goes off duty leaves at once. Empty: everyone.",
+          "description": "Jobs: Only members of these jobs can use it. Leave jobs and gangs empty for everyone.",
           "type": "array",
-          "maxItems": 20,
           "uniqueItems": true,
           "items": {
-            "type": "string",
-            "maxLength": 32
+            "type": "string"
+          }
+        },
+        "gangs": {
+          "description": "Gangs: Members of these gangs can use it too.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
           }
         },
         "onDuty": {
-          "description": "Only on duty: The player must be on duty for one of the jobs.",
+          "description": "Only on duty: Job members must be on duty in that job.",
           "type": "boolean"
         },
         "anim": {
@@ -59,9 +65,7 @@
       "required": [
         "label",
         "from",
-        "to",
-        "jobs",
-        "onDuty"
+        "to"
       ]
     }
   },

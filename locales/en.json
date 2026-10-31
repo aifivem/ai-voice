@@ -99,11 +99,6 @@
   "ADMIN_F_CHANNEL_FROM": "From frequency",
   "ADMIN_F_CHANNEL_TO": "To frequency",
   "ADMIN_H_CHANNEL_RANGE": "Frequencies as the radio shows them, for example 1 to 10 or 1.5.",
-  "ADMIN_F_CHANNEL_JOBS": "Jobs",
-  "ADMIN_H_CHANNEL_JOBS": "Only members of these jobs can join; a player who loses the job or goes off duty leaves at once. Empty: everyone.",
-  "ADMIN_P_CHANNEL_JOBS": "police",
-  "ADMIN_F_CHANNEL_DUTY": "Only on duty",
-  "ADMIN_H_CHANNEL_DUTY": "The player must be on duty for one of the jobs.",
   "ADMIN_F_CHANNEL_ANIM": "Animation",
   "ADMIN_H_CHANNEL_ANIM": "The radio animation on these frequencies (the default one, none, or a set).",
   "ADMIN_ERR_CHANNEL_RANGE": "The first frequency must not be higher than the last."

@@ -2,7 +2,7 @@ import { AdminPanel } from "@aicore-fivem/lib/server";
 import { isRecord, num } from "@aicore-fivem/lib/shared";
 import {
   frequencyOf,
-  readFrequencies,
+  readFrequency,
   readSettings,
   type Frequency,
   type Settings,
@@ -20,10 +20,10 @@ panel.rule("channels", (_key, next) =>
     : null,
 );
 
-/** The parsed panel content, read again after every change. */
+/** The parsed panel content: settings read again after every change, frequencies per record. */
 class Content {
   settings: Settings = readSettings(panel.get("settings"));
-  frequencies: Frequency[] = readFrequencies(panel.get("channels"));
+  readonly frequencies = panel.records("channels", readFrequency);
   private readonly settingsListeners: Array<
     (next: Settings, old: Settings) => void
   > = [];
@@ -37,7 +37,6 @@ class Content {
         listener(this.settings, old);
     });
     panel.onChange("channels", () => {
-      this.frequencies = readFrequencies(panel.get("channels"));
       for (const listener of this.frequencyListeners) listener();
     });
   }
@@ -52,7 +51,7 @@ class Content {
 
   /** The frequency span covering a channel, if any. */
   frequencyOf(channel: number): Frequency | undefined {
-    return frequencyOf(this.frequencies, channel);
+    return frequencyOf(this.frequencies.values(), channel);
   }
 
   /**

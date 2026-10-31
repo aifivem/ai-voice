@@ -72,9 +72,7 @@ export function registerClientExports(): void {
       throw new Error("'state' expected a boolean");
     state.cycleBlocked = blocked;
   });
-  both("overrideProximityCheck", (fn: unknown) =>
-    mumble.setCheck(fn, GetInvokingResource() ?? ""),
-  );
+  both("overrideProximityCheck", (fn: unknown) => mumble.setCheck(fn));
   both("resetProximityCheck", () => mumble.resetCheck());
   both("setVoiceState", (mode: unknown, channel: unknown) => {
     if (backendKey.get() !== "mumble")

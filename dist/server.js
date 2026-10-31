@@ -43,8 +43,65 @@ function bool(value, fallback) {
 function str(value, fallback, max = 64) {
 	return typeof value == "string" && value.trim() ? value.trim().slice(0, max) : fallback;
 }
+function record(value) {
+	return typeof value == "object" && value && !Array.isArray(value) ? value : {};
+}
 // ../../../packages/lib/src/shared/access.ts
-const isPublic = (rule) => rule.jobs.length === 0 && rule.gangs.length === 0, isObject = (value) => typeof value == "object" && !!value && !Array.isArray(value);
+const names = (v) => Array.isArray(v) ? v.filter((x) => typeof x == "string") : [];
+function readAccess(value) {
+	let v = record(value), grades = {};
+	for (let [name, grade] of Object.entries(record(v.grades))) typeof grade == "number" && Number.isInteger(grade) && grade >= 0 && (grades[name] = grade);
+	return {
+		jobs: names(v.jobs),
+		gangs: names(v.gangs),
+		grades,
+		onDuty: bool(v.onDuty, !1)
+	};
+}
+const isPublic = (rule) => rule.jobs.length === 0 && rule.gangs.length === 0, ACCESS_FIELDS = {
+	jobs: {
+		type: "names",
+		lookup: "job",
+		optional: !0
+	},
+	gangs: {
+		type: "names",
+		lookup: "gang",
+		optional: !0
+	},
+	onDuty: {
+		type: "bool",
+		optional: !0
+	}
+};
+function accessFields() {
+	return [
+		{
+			widget: "tags",
+			lookup: "job",
+			path: "jobs",
+			label: "ADMIN_F_ACCESS_JOBS",
+			hint: "ADMIN_H_ACCESS_JOBS",
+			placeholder: "ADMIN_P_ACCESS_JOBS"
+		},
+		{
+			widget: "tags",
+			lookup: "gang",
+			path: "gangs",
+			label: "ADMIN_F_ACCESS_GANGS",
+			hint: "ADMIN_H_ACCESS_GANGS",
+			placeholder: "ADMIN_P_ACCESS_GANGS"
+		},
+		{
+			widget: "switch",
+			path: "onDuty",
+			label: "ADMIN_F_ACCESS_ON_DUTY",
+			hint: "ADMIN_H_ACCESS_ON_DUTY"
+		}
+	];
+}
+// ../../../packages/lib/src/shared/records.ts
+const isObject = (value) => typeof value == "object" && !!value && !Array.isArray(value);
 function readRecords(raw, readOne) {
 	let out = new Map();
 	if (!isObject(raw)) return out;
@@ -1012,9 +1069,9 @@ function playersNear(source, radius) {
 }
 createLogger(GetCurrentResourceName());
 const dropped = new Set();
-let listening = !1;
+let listening$1 = !1;
 function onDropped(fn) {
-	listening || (listening = !0, on("playerDropped", () => {
+	listening$1 || (listening$1 = !0, on("playerDropped", () => {
 		let source = Number(globalThis.source);
 		for (let handler of dropped) handler(source);
 	})), dropped.add(fn);
@@ -1163,6 +1220,65 @@ function onClientEvent(name, first, second) {
 	});
 }
 createLogger("aicore-lib");
+// ../../../packages/lib/src/fivem/byResource.ts
+function caller() {
+	let invoking = GetInvokingResource();
+	return invoking != null && invoking !== "" ? invoking : GetCurrentResourceName();
+}
+const stopHandlers = [];
+let listening = !1;
+function onStop(handler) {
+	if (stopHandlers.push(handler), listening) return;
+	listening = !0;
+	let event = IsDuplicityVersion() ? "onResourceStop" : "onClientResourceStop";
+	on(event, (resource) => {
+		for (let stop of stopHandlers) stop(resource);
+	});
+}
+var ByResource = class {
+	options;
+	byOwner = new Map();
+	owners = new Map();
+	constructor(options = {}) {
+		this.options = options, onStop((resource) => this.dropResource(resource));
+	}
+	set(key, value, owner = caller()) {
+		let previous = this.owners.get(key);
+		previous !== void 0 && previous !== owner && this.byOwner.get(previous)?.delete(key);
+		let map = this.byOwner.get(owner);
+		map || this.byOwner.set(owner, map = new Map()), map.set(key, value), this.owners.set(key, owner);
+	}
+	get(key) {
+		let owner = this.owners.get(key);
+		return owner === void 0 ? void 0 : this.byOwner.get(owner)?.get(key);
+	}
+	ownerOf(key) {
+		return this.owners.get(key);
+	}
+	delete(key) {
+		let owner = this.owners.get(key);
+		if (owner === void 0) return !1;
+		this.owners.delete(key);
+		let map = this.byOwner.get(owner);
+		return map?.delete(key), map?.size === 0 && this.byOwner.delete(owner), !0;
+	}
+	*values() {
+		for (let map of this.byOwner.values()) yield* map.values();
+	}
+	*entries() {
+		for (let map of this.byOwner.values()) yield* map.entries();
+	}
+	get size() {
+		return this.owners.size;
+	}
+	dropResource(resource) {
+		let map = this.byOwner.get(resource);
+		if (map) {
+			this.byOwner.delete(resource);
+			for (let [key, value] of map) this.owners.delete(key), this.options.onDrop?.(resource, key, value);
+		}
+	}
+};
 let log$6 = null;
 var ScheduledJob = class {
 	interval;
@@ -1491,19 +1607,19 @@ function readSettings(raw) {
 		speakerBidirectional: bool(raw.speakerBidirectional, !0)
 	};
 }
-function readFrequencies(raw) {
-	let list = [];
-	for (let value of Object.values(raw)) isRecord(value) && list.push({
-		label: str(value.label, "", 48),
-		from: num(value.from, 0),
-		to: num(value.to, 0),
-		jobs: Array.isArray(value.jobs) ? value.jobs.filter((j) => typeof j == "string") : [],
-		onDuty: bool(value.onDuty, !0),
-		anim: typeof value.anim == "string" ? value.anim : ""
-	});
-	return list;
+const readFrequency = (_key, value) => ({
+	label: str(value.label, "", 48),
+	from: num(value.from, 0),
+	to: num(value.to, 0),
+	access: {
+		...readAccess(value),
+		onDuty: bool(value.onDuty, !0)
+	},
+	anim: typeof value.anim == "string" ? value.anim : ""
+});
+function frequencyOf(list, channel) {
+	for (let f of list) if (channel >= f.from && channel <= f.to) return f;
 }
-const frequencyOf = (list, channel) => list.find((f) => channel >= f.from && channel <= f.to);
 function proximityOf(settings, index) {
 	let mode = settings.modes[index - 1] ?? settings.modes[0] ?? DEFAULT_MODES[1];
 	return {
@@ -1707,13 +1823,7 @@ const volume$1 = {
 					min: .01,
 					max: CHANNEL_MAX
 				},
-				jobs: {
-					type: "names",
-					max: 20,
-					itemMax: 32,
-					lookup: "job"
-				},
-				onDuty: { type: "bool" },
+				...ACCESS_FIELDS,
 				anim: {
 					type: "enum",
 					values: [
@@ -2023,20 +2133,7 @@ const volume$1 = {
 					max: CHANNEL_MAX,
 					step: .01
 				},
-				{
-					widget: "tags",
-					path: "jobs",
-					label: "ADMIN_F_CHANNEL_JOBS",
-					hint: "ADMIN_H_CHANNEL_JOBS",
-					placeholder: "ADMIN_P_CHANNEL_JOBS",
-					lookup: "job"
-				},
-				{
-					widget: "switch",
-					path: "onDuty",
-					label: "ADMIN_F_CHANNEL_DUTY",
-					hint: "ADMIN_H_CHANNEL_DUTY"
-				},
+				...accessFields(),
 				{
 					widget: "select",
 					path: "anim",
@@ -2141,7 +2238,7 @@ const panel = new AdminPanel(schema);
 setImmediate(() => seedFromConvars(panel)), panel.rule("channels", (_key, next) => isRecord(next) && num(next.from, 0) > num(next.to, 0) ? "ADMIN_ERR_CHANNEL_RANGE" : null);
 const content = new class {
 	settings = readSettings(panel.get("settings"));
-	frequencies = readFrequencies(panel.get("channels"));
+	frequencies = panel.records("channels", readFrequency);
 	settingsListeners = [];
 	frequencyListeners = [];
 	constructor() {
@@ -2150,7 +2247,6 @@ const content = new class {
 			this.settings = readSettings(panel.get("settings"));
 			for (let listener of this.settingsListeners) listener(this.settings, old);
 		}), panel.onChange("channels", () => {
-			this.frequencies = readFrequencies(panel.get("channels"));
 			for (let listener of this.frequencyListeners) listener();
 		});
 	}
@@ -2161,7 +2257,7 @@ const content = new class {
 		this.frequencyListeners.push(listener);
 	}
 	frequencyOf(channel) {
-		return frequencyOf(this.frequencies, channel);
+		return frequencyOf(this.frequencies.values(), channel);
 	}
 	showStatus(values) {
 		setImmediate(() => {
@@ -2173,24 +2269,9 @@ const content = new class {
 		});
 	}
 }(), log$4 = createLogger(ResourceName);
-var Registered = class {
-	entries = new Map();
-	set(key, fn, resource) {
-		return typeof fn == "function" && (this.entries.set(key, {
-			resource,
-			fn
-		}), !0);
-	}
-	get(key) {
-		return this.entries.get(key)?.fn;
-	}
-	values() {
-		return [...this.entries.values()].map((e) => e.fn);
-	}
-	dropResource(resource) {
-		for (let [key, entry] of this.entries) entry.resource === resource && this.entries.delete(key);
-	}
-};
+function register(map, key, fn) {
+	return typeof fn == "function" && (map.set(key, fn), !0);
+}
 function ask(fn, ...args) {
 	try {
 		return fn(...args);
@@ -2199,29 +2280,26 @@ function ask(fn, ...args) {
 	}
 }
 const checks = new class {
-	radio = new Registered();
-	modes = new Registered();
-	names = new Registered();
-	calls = new Registered();
-	constructor() {
-		on("onResourceStop", (resource) => {
-			this.radio.dropResource(resource), this.modes.dropResource(resource), this.names.dropResource(resource), this.calls.dropResource(resource);
-		});
-	}
-	addCallCheck(fn, resource) {
-		return this.calls.set(resource, fn, resource);
+	radio = new ByResource();
+	modes = new ByResource();
+	names = new ByResource();
+	calls = new ByResource();
+	addCallCheck(fn) {
+		return register(this.calls, caller(), fn);
 	}
 	canClientJoinCall(source, call) {
-		return content.settings.clientCalls ? !0 : this.calls.values().some((fn) => ask(fn, source, call) === !0);
+		if (content.settings.clientCalls) return !0;
+		for (let fn of this.calls.values()) if (ask(fn, source, call) === !0) return !0;
+		return !1;
 	}
-	addRadioCheck(channel, fn, resource) {
-		return this.radio.set(channel, fn, resource);
+	addRadioCheck(channel, fn) {
+		return register(this.radio, channel, fn);
 	}
-	addModeCheck(fn, resource) {
-		return this.modes.set(resource, fn, resource);
+	addModeCheck(fn) {
+		return register(this.modes, caller(), fn);
 	}
-	setNameGetter(fn, resource) {
-		return this.names.set("name", fn, resource);
+	setNameGetter(fn) {
+		return register(this.names, "name", fn);
 	}
 	canJoinRadio(source, channel) {
 		if (!this.jobAllows(source, channel)) return !1;
@@ -2230,10 +2308,11 @@ const checks = new class {
 	}
 	jobAllows(source, channel) {
 		let rule = content.frequencyOf(channel);
-		return !rule || rule.jobs.length === 0 ? !0 : rule.onDuty ? online.onDutyIn(source, rule.jobs) : online.jobs(source).some((job) => rule.jobs.includes(job));
+		return !rule || online.allows(source, rule.access);
 	}
 	canSetRange(source, index, distance) {
-		return this.modes.values().every((fn) => ask(fn, source, index, distance) !== !1);
+		for (let fn of this.modes.values()) if (ask(fn, source, index, distance) === !1) return !1;
+		return !0;
 	}
 	radioName(source) {
 		let fn = this.names.get("name"), custom = fn ? ask(fn, source) : null;
@@ -2475,7 +2554,7 @@ function both(name, fn) {
 const toSource = (v) => {
 	let n = typeof v == "string" ? Number(v) : v;
 	return typeof n == "number" && Number.isInteger(n) && n > 0 ? n : null;
-}, invoker = () => GetInvokingResource() ?? "unknown";
+};
 function channelArg(value, what) {
 	let channel = toChannel(value);
 	if (channel === null) throw Error(`'${what}' expected a number`);
@@ -2494,9 +2573,9 @@ function registerServerExports(s) {
 		return id === null ? {} : s.groups.radioMembers(id);
 	};
 	both("getPlayersInRadioChannel", members), both("GetPlayersInRadioChannel", members), both("addChannelCheck", (channel, fn) => {
-		if (!checks.addRadioCheck(channelArg(channel, "channel"), fn, invoker())) throw Error("'cb' expected a function");
+		if (!checks.addRadioCheck(channelArg(channel, "channel"), fn)) throw Error("'cb' expected a function");
 	}), both("overrideRadioNameGetter", (_channel, fn) => {
-		if (!checks.setNameGetter(fn, invoker())) throw Error("'cb' expected a function");
+		if (!checks.setNameGetter(fn)) throw Error("'cb' expected a function");
 	}), both("isValidPlayer", (source) => {
 		let src = toSource(source);
 		return src !== null && s.players.get(src) !== void 0;
@@ -2513,7 +2592,7 @@ function registerServerExports(s) {
 		let src = toSource(source), time = typeof seconds == "number" && seconds > 0 ? seconds : 900;
 		return src !== null && s.mutes.toggle(src, 0, time);
 	}), registerExport("addProximityCheck", (fn) => {
-		if (!checks.addModeCheck(fn, invoker())) throw Error("expected a function");
+		if (!checks.addModeCheck(fn)) throw Error("expected a function");
 	}), registerExport("addPlayerRadioListen", (source, channel) => {
 		let src = toSource(source);
 		return src !== null && s.groups.listen(src, channelArg(channel, "channel"), !0);
@@ -2530,7 +2609,7 @@ function registerServerExports(s) {
 			channels: [...player.radios]
 		} : null;
 	}), registerExport("addCallCheck", (fn) => {
-		if (!checks.addCallCheck(fn, invoker())) throw Error("expected a function");
+		if (!checks.addCallCheck(fn)) throw Error("expected a function");
 	}), registerExport("setPlayerCallSpeaker", (source, on) => {
 		let src = toSource(source);
 		return src !== null && s.speakers.set(src, on === !0);
@@ -2927,7 +3006,7 @@ on("playerJoining", () => join(eventSource())), players.onDrop((player) => {
 const recheck = (source) => {
 	typeof source == "number" && setTimeout(() => groups.recheck(source), 0);
 };
-on(CORE.jobsChangedEvent, recheck), on(CORE.dutyChangedEvent, recheck), on(CORE.playerUnloadedEvent, recheck), on(CORE.playerLoadedEvent, recheck), content.onFrequencies(() => {
+on(CORE.jobsChangedEvent, recheck), on(CORE.dutyChangedEvent, recheck), on(CORE.gangsChangedEvent, recheck), on(CORE.playerUnloadedEvent, recheck), on(CORE.playerLoadedEvent, recheck), content.onFrequencies(() => {
 	for (let player of players.all()) groups.recheck(player.source);
 }), content.onSettings((next, old) => {
 	JSON.stringify(next.modes) !== JSON.stringify(old.modes) && players.reload(), next.backend !== old.backend && log.warn("the voice backend changes on the next start of ai-voice");
