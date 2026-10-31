@@ -7,7 +7,7 @@
   "author": {
     "name": "TGIANN"
   },
-  "repository": "github:TGIANN/ai-voice",
+  "repository": "github:aifivem/ai-voice",
   "type": "module",
   "fxDependencies": [
     "/onesync",
