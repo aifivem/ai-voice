@@ -1,6 +1,13 @@
-import { aiLog, notify, PlayerMap } from "@aicore-fivem/lib/server";
+import {
+  aiLog,
+  aiLogChannels,
+  notify,
+  PlayerMap,
+} from "@aicore-fivem/lib/server";
 import { Locale, PMA } from "common";
 import type { Players } from "./players";
+
+aiLogChannels({ mutes: {} });
 
 /** setTimeout holds at most 2^31-1 ms (~24.8 days); longer waits re-arm. */
 const MAX_TIMEOUT = 2_147_483_647;

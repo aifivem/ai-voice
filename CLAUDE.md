@@ -31,7 +31,7 @@ Proximity voice with ranges, radio (several frequencies at once, push-to-talk on
 
 ## Pitfalls
 
-- The Enhanced natives are in neither the typings nor `native.py`; they are called by hash in `server/natives.ts` (joaat of the upper-case name). Float arguments get FiveM's `+ 0.0000001`, or an integral distance arrives as an int.
+- The Enhanced natives are in neither the typings nor `native.py`; they are called by hash in `server/routing/natives.ts` (joaat of the upper-case name). Float arguments get FiveM's `+ 0.0000001`, or an integral distance arrives as an int.
 - `AddPlayerToVoiceChannel` on a member resets its muted and deaf state: `VoiceChannel` never re-adds.
 - A restart of ai-voice keeps the player bags: the server reads range, active frequency and call back from them at start (listened frequencies and loudspeakers are not kept).
 - `provide` lines need a full server start before `GetResourceState("pma-voice")` reports started.
@@ -41,5 +41,6 @@ Proximity voice with ranges, radio (several frequencies at once, push-to-talk on
 
 ## Entry points
 
-- Server: wiring `resource/server/index.ts`, backends `server/router.ts` (Mumble) and `server/enhanced.ts`, frequencies and calls `server/groups.ts`, loudspeaker `server/speaker.ts`, takeover `server/takeover.ts`, cfg convars `server/convars.ts`, panel `server/schema.ts`.
-- Client: `resource/client/index.ts`, Legacy routing `client/mumble.ts`, radio `client/radio.ts` and `client/anim.ts`, submixes `client/submixes.ts`.
+- Server: `resource/server/index.ts` imports the features in start order. Backend choice and routers `server/routing/` (`backend.ts` picks one, `mumble.ts`, `enhanced.ts` with `bucket.ts` and `channel.ts`), the voice state instances `server/state.ts`, frequencies and calls `server/groups/` (`index.ts` re-checks access), client requests `server/clientRequests.ts`, joining and dropping `server/join.ts`, loudspeaker `server/speaker.ts`, takeover `server/takeover.ts`, cfg convars `server/convars.ts`, panel `server/schema/` (one file per tab; the settings tab's cards in `settingsRanges.ts`, `settingsRadio.ts`, `settingsPhone.ts`; defaults in `schema/defaults.ts`).
+- Client: `resource/client/index.ts` imports the features; Legacy routing `client/mumble.ts`, radio `client/radio.ts`, `client/anim.ts` and the tgiann-radio-v2 adapter `client/externalRadio.ts`, backend start `client/backend.ts`, submixes `client/submixes.ts`.
+- Common: event / bag names `common/voice.ts`; settings and their reader `common/settings.ts`; one file per domain beside it (`proximity.ts`, `channel.ts`, `frequency.ts`, `anim.ts`, `backend.ts`, `takeover.ts`).

@@ -1,5 +1,5 @@
 import { provideExport, registerExport } from "@aicore-fivem/lib/client";
-import { toChannel } from "common";
+import { toChannel } from "common/channel";
 import { radioAnim } from "./anim";
 import { effects } from "./effects";
 import { mumble } from "./mumble";
@@ -122,3 +122,5 @@ export function registerClientExports(): void {
   registerExport("isRadioTalking", () => state.radioPressed);
   registerSubmixExports(both);
 }
+
+registerClientExports();

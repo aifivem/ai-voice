@@ -381,7 +381,7 @@ function entityCoords(entity) {
 }
 const coordsOf = (source) => entityCoords(GetPlayerPed(String(source)));
 resourceExport(CORE.resource);
-const log$12 = createLogger(GetCurrentResourceName()), gates = new Set();
+const log$16 = createLogger(GetCurrentResourceName()), gates = new Set();
 on("playerDropped", () => {
 	let source = Number(globalThis.source);
 	for (let gate of gates) gate.release(source);
@@ -422,11 +422,11 @@ var ClientGate = class {
 		this.refusals.set(source, {
 			at: now,
 			skipped: 0
-		}), log$12.warn(`${this.name} refused for ${GetPlayerName(String(source))} (${source}): ${typeof reason == "string" ? reason : reason()}${more}`);
+		}), log$16.warn(`${this.name} refused for ${GetPlayerName(String(source))} (${source}): ${typeof reason == "string" ? reason : reason()}${more}`);
 	}
 };
 // ../../../packages/lib/src/server/callback.ts
-const log$11 = createLogger(GetCurrentResourceName()), resource$1 = GetCurrentResourceName(), REFUSED = Symbol("refused");
+const log$15 = createLogger(GetCurrentResourceName()), resource$2 = GetCurrentResourceName(), REFUSED = Symbol("refused");
 function onClientCallback(name, first, second) {
 	let [handler, options] = typeof first == "function" ? [first, second ?? {}] : [second, first], gate = new ClientGate(name, options, 20);
 	onNet(requestEvent(name), async (caller, id, ...raw) => {
@@ -438,12 +438,12 @@ function onClientCallback(name, first, second) {
 			let result = await gate.run(source, REFUSED, () => handler(source, ...args));
 			result === REFUSED ? emitNet(responseEvent(caller), source, id, !1, null) : emitNet(responseEvent(caller), source, id, !0, result ?? null);
 		} catch (error) {
-			log$11.error(`callback ${name} failed for ${source}`, error), emitNet(responseEvent(caller), source, id, !1, null);
+			log$15.error(`callback ${name} failed for ${source}`, error), emitNet(responseEvent(caller), source, id, !1, null);
 		}
 	});
 }
 const pending = new Map();
-onNet(responseEvent(resource$1), (id, ok, result) => {
+onNet(responseEvent(resource$2), (id, ok, result) => {
 	let entry = typeof id == "number" ? pending.get(id) : void 0;
 	entry && entry.source === Number(globalThis.source) && (pending.delete(id), clearTimeout(entry.timer), ok === !0 ? entry.resolve(result) : entry.reject(Error("client callback failed")));
 });
@@ -489,7 +489,7 @@ function toPatch(value) {
 		default: return null;
 	}
 }
-const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(value)), core$25 = resourceExport(CORE.resource), ERR = {
+const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(value)), core$26 = resourceExport(CORE.resource), ERR = {
 	type: "ADMIN_ERR_TYPE",
 	range: "ADMIN_ERR_RANGE",
 	length: "ADMIN_ERR_LENGTH",
@@ -503,7 +503,7 @@ const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(va
 		if (cached && Date.now() - cached.at < 2e3) return cached.values.size > 0 ? cached.values : null;
 		let list = [];
 		try {
-			list = core$25.GetLookupValues(source);
+			list = core$26.GetLookupValues(source);
 		} catch {}
 		let values = new Set(Array.isArray(list) ? list.filter((v) => typeof v == "string") : []);
 		return this.lists.set(source, {
@@ -632,11 +632,7 @@ function applyEdit(data, patch, spec) {
 	}
 	return [spec.kind === "records" ? patch.key : void 0];
 }
-// ../../../packages/lib/src/server/admin/jsonSchema.ts
-const SCHEMA_KEY = {
-	type: "string",
-	description: "This file's JSON Schema (for editors)."
-};
+// ../../../packages/lib/src/server/admin/descriptions.ts
 function langFile(resource) {
 	try {
 		let raw = JSON.parse(LoadResourceFile(resource, "locales/en.json") ?? "{}");
@@ -663,6 +659,11 @@ function describe(schema, file, lang) {
 	for (let tab of schema.tabs) if (tab.file === file) for (let card of tab.cards) collect(card.fields, "", lang, out);
 	return out;
 }
+// ../../../packages/lib/src/server/admin/jsonSchema.ts
+const SCHEMA_KEY = {
+	type: "string",
+	description: "This file's JSON Schema (for editors)."
+};
 function toJson(spec, path, desc) {
 	let description = desc.get(path), base = description ? { description } : {};
 	switch (spec.type) {
@@ -767,27 +768,20 @@ function writeSchema(resource, name, text, log) {
 	let dir = `${GetResourcePath(resource)}/data/schemas`;
 	(0, node_fs_promises.mkdir)(dir, { recursive: !0 }).then(() => (0, node_fs_promises.writeFile)(`${dir}/${name}.schema.json`, text, "utf8")).catch((error) => log.error(`writing ${resource}/${path} failed`, error));
 }
-// ../../../packages/lib/src/server/admin/panel.ts
-const core$24 = resourceExport(CORE.resource);
-var AdminPanel = class {
+// ../../../packages/lib/src/server/admin/panelFiles.ts
+const core$25 = resourceExport(CORE.resource);
+var PanelFiles = class {
 	schema;
 	data = new Map();
 	dataFiles = new Map();
 	handlers = new Map();
-	rules = new Map();
-	actions = new Map();
 	views = new FileViews((file) => this.get(file));
 	worldChanges = new Map();
 	resource = GetCurrentResourceName();
 	log = createLogger(this.resource);
-	editor = 0;
 	constructor(schema) {
 		this.schema = schema;
 		for (let [name, spec] of Object.entries(schema.files)) this.load(name, spec);
-		registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelData", () => this.dataSnapshot()), registerExport("AdminPanelSummary", () => this.summary()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges), { rate: {
-			count: 4,
-			windowMs: 1e4
-		} }), setImmediate(() => core$24.RegisterAdminPanel(this.resource));
 	}
 	get(file) {
 		return this.data.get(file) ?? {};
@@ -795,17 +789,68 @@ var AdminPanel = class {
 	onChange(file, handler) {
 		this.handlers.set(file, [...this.handlers.get(file) ?? [], handler]);
 	}
-	rule(file, rule) {
-		this.rules.set(file, rule);
-	}
-	onAction(id, handler) {
-		this.actions.set(id, handler);
-	}
 	view(file, read) {
 		return this.views.view(file, read);
 	}
 	records(file, readOne) {
 		return this.views.records(file, readOne);
+	}
+	commit(file, key, value) {
+		let data = this.data.get(file);
+		data && (key === void 0 ? isRecord(value) && this.data.set(file, clone(value)) : value === null ? delete data[key] : data[key] = clone(value), this.changed(file, key));
+	}
+	commitAfter(file, key, value) {
+		setImmediate(() => this.commit(file, key, value));
+	}
+	store(patch, spec) {
+		let data = this.data.get(patch.file) ?? {}, keys = applyEdit(data, patch, spec);
+		if (keys.length !== 0) {
+			this.data.set(patch.file, data);
+			for (let key of keys) this.changed(patch.file, key);
+		}
+	}
+	changed(file, key) {
+		let spec = this.schema.files[file], data = this.get(file), value = key === void 0 ? data : data[key] ?? null;
+		this.dataFiles.get(file)?.write(data), this.views.changed(file, key, value);
+		for (let handler of this.handlers.get(file) ?? []) handler(key, value);
+		if (core$25.AdminPanelChanged({
+			resource: this.resource,
+			file,
+			key,
+			value: clone(value)
+		}), spec?.sync !== "all") return;
+		let changes = this.worldChanges.get(file) ?? {};
+		changes[key ?? ""] = clone(value), this.worldChanges.set(file, changes), emitNet(ADMIN.worldEvent(this.resource), -1, file, key ?? null, value);
+	}
+	load(name, spec) {
+		if (spec.memory) {
+			this.data.set(name, {});
+			return;
+		}
+		let file = new DataFile(this.resource, name, this.log);
+		this.dataFiles.set(name, file), file.schemaRef = `./schemas/${name}.schema.json`, writeSchema(this.resource, name, fileSchema(this.resource, this.schema, name, spec), this.log);
+		let raw = file.read(), data = isRecord(raw) ? raw : {}, filled = !1;
+		if (spec.kind === "settings") for (let [section, value] of Object.entries(spec.defaults ?? {})) section in data || (data[section] = clone(value), filled = !0);
+		this.data.set(name, data), (filled || raw === null || !file.hasSchemaRef()) && file.write(data);
+	}
+};
+// ../../../packages/lib/src/server/admin/panel.ts
+const core$24 = resourceExport(CORE.resource);
+var AdminPanel = class extends PanelFiles {
+	rules = new Map();
+	actions = new Map();
+	editor = 0;
+	constructor(schema) {
+		super(schema), registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelData", () => this.dataSnapshot()), registerExport("AdminPanelSummary", () => this.summary()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges), { rate: {
+			count: 4,
+			windowMs: 1e4
+		} }), setImmediate(() => core$24.RegisterAdminPanel(this.resource));
+	}
+	rule(file, rule) {
+		this.rules.set(file, rule);
+	}
+	onAction(id, handler) {
+		this.actions.set(id, handler);
 	}
 	snapshot() {
 		return {
@@ -883,44 +928,6 @@ var AdminPanel = class {
 			};
 		}
 	}
-	commit(file, key, value) {
-		let data = this.data.get(file);
-		data && (key === void 0 ? isRecord(value) && this.data.set(file, clone(value)) : value === null ? delete data[key] : data[key] = clone(value), this.changed(file, key));
-	}
-	commitAfter(file, key, value) {
-		setImmediate(() => this.commit(file, key, value));
-	}
-	store(patch, spec) {
-		let data = this.data.get(patch.file) ?? {}, keys = applyEdit(data, patch, spec);
-		if (keys.length !== 0) {
-			this.data.set(patch.file, data);
-			for (let key of keys) this.changed(patch.file, key);
-		}
-	}
-	changed(file, key) {
-		let spec = this.schema.files[file], data = this.get(file), value = key === void 0 ? data : data[key] ?? null;
-		this.dataFiles.get(file)?.write(data), this.views.changed(file, key, value);
-		for (let handler of this.handlers.get(file) ?? []) handler(key, value);
-		if (core$24.AdminPanelChanged({
-			resource: this.resource,
-			file,
-			key,
-			value: clone(value)
-		}), spec?.sync !== "all") return;
-		let changes = this.worldChanges.get(file) ?? {};
-		changes[key ?? ""] = clone(value), this.worldChanges.set(file, changes), emitNet(ADMIN.worldEvent(this.resource), -1, file, key ?? null, value);
-	}
-	load(name, spec) {
-		if (spec.memory) {
-			this.data.set(name, {});
-			return;
-		}
-		let file = new DataFile(this.resource, name, this.log);
-		this.dataFiles.set(name, file), file.schemaRef = `./schemas/${name}.schema.json`, writeSchema(this.resource, name, fileSchema(this.resource, this.schema, name, spec), this.log);
-		let raw = file.read(), data = isRecord(raw) ? raw : {}, filled = !1;
-		if (spec.kind === "settings") for (let [section, value] of Object.entries(spec.defaults ?? {})) section in data || (data[section] = clone(value), filled = !0);
-		this.data.set(name, data), (filled || raw === null || !file.hasSchemaRef()) && file.write(data);
-	}
 };
 function labelOf(record, path) {
 	if (!path) return null;
@@ -949,7 +956,7 @@ function notify(source, text, kind = "info", duration, title) {
 	emitNet(LIB_UI.notifyEvent, source, notification);
 }
 resourceExport(CORE.resource);
-// ../../../packages/lib/src/server/online.ts
+// ../../../packages/lib/src/server/online/mirror.ts
 const core$22 = resourceExport(CORE.resource);
 function reindex(index, source, before, after) {
 	for (let name of before) {
@@ -961,7 +968,7 @@ function reindex(index, source, before, after) {
 		set || index.set(name, set = new Set()), set.add(source);
 	}
 }
-var OnlinePlayers = class {
+var OnlineMirror = class {
 	players = new Map();
 	onDuty = new Map();
 	jobIndex = new Map();
@@ -1013,6 +1020,7 @@ var OnlinePlayers = class {
 		let set = this.onDuty.get(job);
 		set || this.onDuty.set(job, set = new Set()), set.add(source);
 	}
+}, OnlinePlayers = class extends OnlineMirror {
 	sources() {
 		return this.start(), this.players.keys();
 	}
@@ -1094,7 +1102,7 @@ function playersNear(source, radius) {
 	return within(coordsOf(source), radius, [source, ...core$19.GetPlayersInScope(source)]);
 }
 // ../../../packages/lib/src/server/players.ts
-const log$10 = createLogger(GetCurrentResourceName()), dropped = new Set();
+const log$14 = createLogger(GetCurrentResourceName()), dropped = new Set();
 let listening$1 = !1;
 function onDropped(fn) {
 	listening$1 || (listening$1 = !0, on("playerDropped", () => {
@@ -1115,15 +1123,15 @@ function onCharacter(handlers) {
 	let live = new Map(), deliver = (source, character) => {
 		if (live.set(source, character.id), handlers.loaded) try {
 			let result = handlers.loaded(source, character);
-			result instanceof Promise && result.catch((error) => log$10.error(`character loaded handler failed for ${source}`, error));
+			result instanceof Promise && result.catch((error) => log$14.error(`character loaded handler failed for ${source}`, error));
 		} catch (error) {
-			log$10.error(`character loaded handler failed for ${source}`, error);
+			log$14.error(`character loaded handler failed for ${source}`, error);
 		}
 	}, end = (source, charId, reason) => {
 		if (live.delete(source)) try {
 			handlers.unloaded?.(source, charId, reason);
 		} catch (error) {
-			log$10.error(`character unloaded handler failed for ${source}`, error);
+			log$14.error(`character unloaded handler failed for ${source}`, error);
 		}
 	};
 	on(CORE.playerLoadedEvent, (source, character) => {
@@ -1177,12 +1185,11 @@ new class {
 		return def === void 0 && this.gangs.set(name, def = core$18.GetGangDefinition(name) ?? null), def;
 	}
 }();
-// ../../../packages/lib/src/server/command.ts
-const resource = GetCurrentResourceName(), log$9 = createLogger(resource);
+const log$13 = createLogger(GetCurrentResourceName());
 let texts = null;
 const t = (key, ...args) => formatText((texts ??= loadLocaleTexts(CORE.resource))[key] ?? key, args);
 function reply(source, text, kind) {
-	source > 0 ? notify(source, text, kind) : log$9.info(text);
+	source > 0 ? notify(source, text, kind) : log$13.info(text);
 }
 var Command = class {
 	params;
@@ -1217,7 +1224,7 @@ var Command = class {
 		if (!this.allowed(source, name)) return reply(source, t("COMMAND_NOT_ALLOWED"), "error");
 		let args = this.parse(raw);
 		if (typeof args == "string") return reply(source, args, "error"), reply(source, t("COMMAND_USAGE", this.usage), "info");
-		let fail = (error) => log$9.error(`command /${name} failed`, error);
+		let fail = (error) => log$13.error(`command /${name} failed`, error);
 		try {
 			let result = this.handler(source, args, line);
 			result instanceof Promise && result.catch(fail);
@@ -1244,7 +1251,8 @@ var Command = class {
 		return args;
 	}
 };
-const commands = new class {
+// ../../../packages/lib/src/server/command/commandSet.ts
+const resource = GetCurrentResourceName(), commands = new class {
 	list = [];
 	sent = new Map();
 	announced = 0;
@@ -1270,6 +1278,7 @@ const commands = new class {
 		});
 	}
 }();
+// ../../../packages/lib/src/server/command/addCommand.ts
 function addCommand(name, options, handler) {
 	let names = (Array.isArray(name) ? name : [name]).map((n) => n.toLowerCase());
 	if (names.length === 0) throw Error("addCommand needs a name");
@@ -1278,12 +1287,12 @@ function addCommand(name, options, handler) {
 	commands.add(command);
 }
 // ../../../packages/lib/src/server/netEvent.ts
-const log$8 = createLogger(GetCurrentResourceName());
+const log$12 = createLogger(GetCurrentResourceName());
 function onClientEvent(name, first, second) {
 	let [handler, options] = typeof first == "function" ? [first, second ?? {}] : [second, first], gate = new ClientGate(name, options, 10);
 	onNet(name, (...raw) => {
 		let source = Number(globalThis.source), args = gate.check(source, raw);
-		args && gate.run(source, void 0, () => handler(source, ...args)).catch((error) => log$8.error(`event ${name} failed for ${source}`, error));
+		args && gate.run(source, void 0, () => handler(source, ...args)).catch((error) => log$12.error(`event ${name} failed for ${source}`, error));
 	});
 }
 createLogger("aicore-lib");
@@ -1350,47 +1359,6 @@ var ByResource = class {
 			this.byOwner.delete(resource);
 			for (let [key, value] of map) this.owners.delete(key), this.options.onDrop?.(resource, key, value);
 		}
-	}
-};
-let log$6 = null;
-var ScheduledJob = class {
-	interval;
-	fn;
-	name;
-	gen = 0;
-	active = !1;
-	stopped = !1;
-	quietUntil = 0;
-	skipped = 0;
-	constructor(interval, fn, name) {
-		this.interval = interval, this.fn = fn, this.name = name;
-	}
-	get running() {
-		return this.active;
-	}
-	set(active) {
-		active === this.active || active && this.stopped || (this.active = active, active ? scheduler.activate(this) : scheduler.deactivate(this));
-	}
-	stop() {
-		this.set(!1), this.stopped = !0;
-	}
-	call() {
-		try {
-			let result = this.fn();
-			result instanceof Promise && result.catch((error) => this.fail(error));
-		} catch (error) {
-			this.fail(error);
-		}
-	}
-	fail(error) {
-		let now = GetGameTimer();
-		if (now < this.quietUntil) {
-			this.skipped++;
-			return;
-		}
-		this.quietUntil = now + 1e4;
-		let more = this.skipped ? ` (+${this.skipped} more)` : "";
-		this.skipped = 0, log$6 ??= createLogger(GetCurrentResourceName()), log$6.error(`job "${this.name}" failed${more}`, error instanceof Error ? error.stack ?? error.message : error);
 	}
 }, Group = class {
 	interval;
@@ -1478,12 +1446,53 @@ const scheduler = new class {
 		groups.length = kept, this.nextDue = soonest;
 	};
 }();
+let log$10 = null;
+var ScheduledJob = class {
+	interval;
+	fn;
+	name;
+	gen = 0;
+	active = !1;
+	stopped = !1;
+	quietUntil = 0;
+	skipped = 0;
+	constructor(interval, fn, name) {
+		this.interval = interval, this.fn = fn, this.name = name;
+	}
+	get running() {
+		return this.active;
+	}
+	set(active) {
+		active === this.active || active && this.stopped || (this.active = active, active ? scheduler.activate(this) : scheduler.deactivate(this));
+	}
+	stop() {
+		this.set(!1), this.stopped = !0;
+	}
+	call() {
+		try {
+			let result = this.fn();
+			result instanceof Promise && result.catch((error) => this.fail(error));
+		} catch (error) {
+			this.fail(error);
+		}
+	}
+	fail(error) {
+		let now = GetGameTimer();
+		if (now < this.quietUntil) {
+			this.skipped++;
+			return;
+		}
+		this.quietUntil = now + 1e4;
+		let more = this.skipped ? ` (+${this.skipped} more)` : "";
+		this.skipped = 0, log$10 ??= createLogger(GetCurrentResourceName()), log$10.error(`job "${this.name}" failed${more}`, error instanceof Error ? error.stack ?? error.message : error);
+	}
+};
 function every(ms, fn, options = {}) {
 	let job = new ScheduledJob(Math.max(0, Math.floor(ms)), fn, options.name ?? (fn.name || "anonymous"));
 	return options.active !== !1 && job.set(!0), job;
 }
-// ../../../packages/lib/src/fivem/state.ts
-const stateNumber = (v) => typeof v == "number" && Number.isFinite(v) ? v : void 0, stateBoolean = (v) => typeof v == "boolean" ? v : void 0, stateString = (v) => typeof v == "string" ? v : void 0, isServer = IsDuplicityVersion();
+// ../../../packages/lib/src/fivem/state/mirror.ts
+const stateNumber = (v) => typeof v == "number" && Number.isFinite(v) ? v : void 0, stateBoolean = (v) => typeof v == "boolean" ? v : void 0, stateString = (v) => typeof v == "string" ? v : void 0;
 var Mirror = class {
 	key;
 	parse;
@@ -1503,7 +1512,23 @@ var Mirror = class {
 		if (this.values.set(id, value), old !== value) for (let listener of this.listeners) listener(id, value, old);
 	}
 };
-const playerStates = new Set();
+IsDuplicityVersion();
+// ../../../packages/lib/src/fivem/state/globalState.ts
+var GlobalKey$1 = class extends Mirror {
+	constructor(key, parse) {
+		super(key, parse);
+		let raw = GlobalState[key];
+		this.values.set("global", raw == null ? void 0 : parse(raw)), AddStateBagChangeHandler(key, "global", (_bag, _key, value) => this.store("global", value));
+	}
+	get() {
+		return this.values.get("global");
+	}
+	put(value) {
+		this.apply("global", value);
+	}
+};
+// ../../../packages/lib/src/fivem/state/playerState.ts
+const isServer = IsDuplicityVersion(), playerStates = new Set();
 let dropListener = !1;
 var PlayerState$1 = class extends Mirror {
 	seen = new Set();
@@ -1533,18 +1558,6 @@ var PlayerState$1 = class extends Mirror {
 	}
 	forget(serverId) {
 		this.values.delete(serverId), this.seen.delete(serverId);
-	}
-}, GlobalKey$1 = class extends Mirror {
-	constructor(key, parse) {
-		super(key, parse);
-		let raw = GlobalState[key];
-		this.values.set("global", raw == null ? void 0 : parse(raw)), AddStateBagChangeHandler(key, "global", (_bag, _key, value) => this.store("global", value));
-	}
-	get() {
-		return this.values.get("global");
-	}
-	put(value) {
-		this.apply("global", value);
 	}
 }, PlayerState = class extends PlayerState$1 {
 	set(source, value) {
@@ -1598,17 +1611,21 @@ const EVENTS = {
 	submix: "submix",
 	callSpeaker: "callSpeaker",
 	isDead: "isDead"
-}, parseBackend = (v) => v === "mumble" || v === "enhanced" ? v : void 0, parseTakeover = (v) => isRecord(v) ? {
-	radio: typeof v.radio == "string" ? v.radio : null,
-	phone: typeof v.phone == "string" ? v.phone : null
-} : void 0, parseProximity = (v) => isRecord(v) && typeof v.index == "number" && typeof v.distance == "number" && typeof v.mode == "string" ? {
-	index: v.index,
-	distance: v.distance,
-	mode: v.mode
-} : void 0, RANGE_MIN = .5, CHANNEL_MAX = 1e6, isChannel = (v) => typeof v == "number" && Number.isFinite(v) && v >= 0 && v <= 1e6, toChannel = (v) => {
-	let n = typeof v == "string" ? Number(v) : v;
-	return isChannel(n) ? n : null;
-}, ANIM_SETS = {
+}, parseBackend = (v) => v === "mumble" || v === "enhanced" ? v : void 0, readFrequency = (_key, value) => ({
+	label: str(value.label, "", 48),
+	from: num(value.from, 0),
+	to: num(value.to, 0),
+	access: {
+		...readAccess(value),
+		onDuty: bool(value.onDuty, !0)
+	},
+	anim: typeof value.anim == "string" ? value.anim : ""
+});
+function frequencyOf(list, channel) {
+	for (let f of list) if (channel >= f.from && channel <= f.to) return f;
+}
+// resource/common/anim.ts
+const ANIM_SETS = {
 	shoulder: {
 		dict: "random@arrests",
 		clip: "generic_radio_enter",
@@ -1629,7 +1646,11 @@ const EVENTS = {
 	"chatter",
 	"handheld",
 	"custom"
-], DEFAULT_MODES = [
+], parseProximity = (v) => isRecord(v) && typeof v.index == "number" && typeof v.distance == "number" && typeof v.mode == "string" ? {
+	index: v.index,
+	distance: v.distance,
+	mode: v.mode
+} : void 0, RANGE_MIN = .5, DEFAULT_MODES = [
 	{
 		label: "Whisper",
 		distance: 1.5
@@ -1689,19 +1710,6 @@ function readSettings(raw) {
 		speakerBidirectional: bool(raw.speakerBidirectional, !0)
 	};
 }
-const readFrequency = (_key, value) => ({
-	label: str(value.label, "", 48),
-	from: num(value.from, 0),
-	to: num(value.to, 0),
-	access: {
-		...readAccess(value),
-		onDuty: bool(value.onDuty, !0)
-	},
-	anim: typeof value.anim == "string" ? value.anim : ""
-});
-function frequencyOf(list, channel) {
-	for (let f of list) if (channel >= f.from && channel <= f.to) return f;
-}
 function proximityOf(settings, index) {
 	let mode = settings.modes[index - 1] ?? settings.modes[0] ?? DEFAULT_MODES[1];
 	return {
@@ -1710,38 +1718,8 @@ function proximityOf(settings, index) {
 		mode: mode?.label ?? "Normal"
 	};
 }
-// resource/server/schema.ts
-const volume$1 = {
-	type: "number",
-	min: 0,
-	max: 100,
-	integer: !0
-}, pct = (path, label, hint) => ({
-	widget: "number",
-	path,
-	label,
-	hint,
-	min: 0,
-	max: 100,
-	unit: "%"
-}), animOptions = [
-	{
-		value: "shoulder",
-		label: "ADMIN_O_ANIM_SHOULDER"
-	},
-	{
-		value: "chatter",
-		label: "ADMIN_O_ANIM_CHATTER"
-	},
-	{
-		value: "handheld",
-		label: "ADMIN_O_ANIM_HANDHELD"
-	},
-	{
-		value: "custom",
-		label: "ADMIN_O_ANIM_CUSTOM"
-	}
-], SETTINGS_DEFAULTS = {
+// resource/server/schema/defaults.ts
+const SETTINGS_DEFAULTS = {
 	backend: "auto",
 	modes: DEFAULT_MODES,
 	defaultMode: 2,
@@ -1767,7 +1745,462 @@ const volume$1 = {
 	speakerRadius: 3,
 	speakerVolume: 60,
 	speakerBidirectional: !0
-}, schema = {
+}, log$9 = createLogger(ResourceName), CONVARS = [
+	{
+		name: "voice_defaultVoiceMode",
+		keys: ["defaultMode"],
+		read: int
+	},
+	{
+		name: "voice_enableProximityCycle",
+		keys: ["cycle"],
+		read: flag
+	},
+	{
+		name: "voice_enableRadios",
+		keys: ["radio"],
+		read: flag
+	},
+	{
+		name: "voice_enablePhones",
+		keys: ["phone"],
+		read: flag
+	},
+	{
+		name: "voice_defaultRadioVolume",
+		keys: ["radioVolume"],
+		read: volume$1
+	},
+	{
+		name: "voice_defaultPhoneVolume",
+		keys: ["phoneVolume"],
+		read: volume$1
+	},
+	{
+		name: "voice_defaultCallVolume",
+		keys: ["phoneVolume"],
+		read: volume$1
+	},
+	{
+		name: "voice_enableSubmix",
+		keys: ["radioSubmix", "phoneSubmix"],
+		read: flag
+	},
+	{
+		name: "voice_enableRadioAnim",
+		keys: ["radioAnim"],
+		read: flag
+	},
+	{
+		name: "voice_disableVehicleRadioAnim",
+		keys: ["radioAnimInVehicle"],
+		read: (raw) => !flag(raw)
+	},
+	{
+		name: "voice_syncPlayerNames",
+		keys: ["syncNames"],
+		read: flag
+	}
+];
+function int(raw) {
+	let n = Number(raw);
+	return Number.isInteger(n) && n >= 1 && n <= 6 ? n : void 0;
+}
+function flag(raw) {
+	return raw === "1" || raw === "true";
+}
+function volume$1(raw) {
+	let n = Number(raw);
+	if (!(!Number.isFinite(n) || n < 0)) return Math.round(Math.min(100, n <= 1 && raw.includes(".") ? n * 100 : n));
+}
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function seedFromConvars(panel) {
+	let settings = panel.get("settings");
+	for (let convar of CONVARS) {
+		let raw = GetConvar(convar.name, "");
+		if (raw === "") continue;
+		let value = convar.read(raw);
+		if (value === void 0) log$9.warn(`${convar.name} "${raw}" is not a valid value, ignored`);
+		else for (let key of convar.keys) same(settings[key], SETTINGS_DEFAULTS[key]) && (same(value, SETTINGS_DEFAULTS[key]) || (panel.commit("settings", key, value), log$9.info(`${key} set from the cfg convar ${convar.name} (${raw})`)));
+	}
+}
+// resource/common/channel.ts
+const CHANNEL_MAX = 1e6, isChannel = (v) => typeof v == "number" && Number.isFinite(v) && v >= 0 && v <= 1e6, toChannel = (v) => {
+	let n = typeof v == "string" ? Number(v) : v;
+	return isChannel(n) ? n : null;
+}, pct = (path, label, hint) => ({
+	widget: "number",
+	path,
+	label,
+	hint,
+	min: 0,
+	max: 100,
+	unit: "%"
+}), animOptions = [
+	{
+		value: "shoulder",
+		label: "ADMIN_O_ANIM_SHOULDER"
+	},
+	{
+		value: "chatter",
+		label: "ADMIN_O_ANIM_CHATTER"
+	},
+	{
+		value: "handheld",
+		label: "ADMIN_O_ANIM_HANDHELD"
+	},
+	{
+		value: "custom",
+		label: "ADMIN_O_ANIM_CUSTOM"
+	}
+], channelsFile = {
+	kind: "records",
+	sync: "all",
+	labelPath: "label",
+	newRecord: {
+		from: 1,
+		to: 10,
+		jobs: ["police"],
+		onDuty: !0,
+		anim: ""
+	},
+	sections: {
+		label: {
+			type: "text",
+			min: 1,
+			max: 48
+		},
+		from: {
+			type: "number",
+			min: .01,
+			max: CHANNEL_MAX
+		},
+		to: {
+			type: "number",
+			min: .01,
+			max: CHANNEL_MAX
+		},
+		...ACCESS_FIELDS,
+		anim: {
+			type: "enum",
+			values: [
+				"",
+				"none",
+				...ANIM_SET_NAMES
+			],
+			optional: !0
+		}
+	}
+}, channelsTab = {
+	id: "channels",
+	file: "channels",
+	icon: "lock",
+	label: "ADMIN_TAB_CHANNELS",
+	desc: "ADMIN_TAB_CHANNELS_DESC",
+	listSub: "jobs",
+	createLabel: "ADMIN_NEW_CHANNEL",
+	deleteLabel: "ADMIN_DELETE_CHANNEL",
+	cards: [{
+		icon: "lock",
+		title: "ADMIN_C_CHANNEL",
+		desc: "ADMIN_C_CHANNEL_DESC",
+		fields: [
+			{
+				widget: "text",
+				path: "label",
+				label: "ADMIN_F_CHANNEL_NAME",
+				placeholder: "ADMIN_P_CHANNEL_NAME"
+			},
+			{
+				widget: "number",
+				path: "from",
+				label: "ADMIN_F_CHANNEL_FROM",
+				hint: "ADMIN_H_CHANNEL_RANGE",
+				min: .01,
+				max: CHANNEL_MAX,
+				step: .01
+			},
+			{
+				widget: "number",
+				path: "to",
+				label: "ADMIN_F_CHANNEL_TO",
+				hint: "ADMIN_H_CHANNEL_RANGE",
+				min: .01,
+				max: CHANNEL_MAX,
+				step: .01
+			},
+			...accessFields(),
+			{
+				widget: "select",
+				path: "anim",
+				label: "ADMIN_F_CHANNEL_ANIM",
+				hint: "ADMIN_H_CHANNEL_ANIM",
+				options: [
+					{
+						value: "",
+						label: "ADMIN_O_ANIM_DEFAULT"
+					},
+					{
+						value: "none",
+						label: "ADMIN_O_ANIM_NONE"
+					},
+					...animOptions
+				]
+			}
+		]
+	}]
+}, phoneCard = {
+	icon: "comments",
+	title: "ADMIN_C_PHONE",
+	desc: "ADMIN_C_PHONE_DESC",
+	fields: [
+		{
+			widget: "switch",
+			path: "phone",
+			label: "ADMIN_F_PHONE"
+		},
+		pct("phoneVolume", "ADMIN_F_PHONE_VOLUME", "ADMIN_H_VOLUME"),
+		{
+			widget: "switch",
+			path: "phoneSubmix",
+			label: "ADMIN_F_PHONE_SUBMIX",
+			hint: "ADMIN_H_PHONE_SUBMIX"
+		},
+		{
+			widget: "info",
+			path: "phoneEffectBy",
+			label: "ADMIN_F_EFFECT_BY",
+			hint: "ADMIN_H_EFFECT_BY",
+			empty: "ADMIN_V_AI_VOICE",
+			mono: !0
+		},
+		{
+			widget: "switch",
+			path: "clientCalls",
+			label: "ADMIN_F_CLIENT_CALLS",
+			hint: "ADMIN_H_CLIENT_CALLS"
+		},
+		{
+			widget: "switch",
+			path: "speaker",
+			label: "ADMIN_F_SPEAKER",
+			hint: "ADMIN_H_SPEAKER"
+		},
+		{
+			widget: "number",
+			path: "speakerRadius",
+			label: "ADMIN_F_SPEAKER_RADIUS",
+			hint: "ADMIN_H_SPEAKER_RADIUS",
+			min: .5,
+			max: 15,
+			step: .5,
+			unit: "m"
+		},
+		pct("speakerVolume", "ADMIN_F_SPEAKER_VOLUME", "ADMIN_H_VOLUME"),
+		{
+			widget: "switch",
+			path: "speakerBidirectional",
+			label: "ADMIN_F_SPEAKER_TWO_WAY",
+			hint: "ADMIN_H_SPEAKER_TWO_WAY"
+		}
+	]
+}, radioCard = {
+	icon: "comments",
+	title: "ADMIN_C_RADIO",
+	desc: "ADMIN_C_RADIO_DESC",
+	fields: [
+		{
+			widget: "switch",
+			path: "radio",
+			label: "ADMIN_F_RADIO"
+		},
+		pct("radioVolume", "ADMIN_F_RADIO_VOLUME", "ADMIN_H_VOLUME"),
+		{
+			widget: "number",
+			path: "maxRadioChannels",
+			label: "ADMIN_F_MAX_CHANNELS",
+			hint: "ADMIN_H_MAX_CHANNELS",
+			min: 1,
+			max: 10
+		},
+		{
+			widget: "switch",
+			path: "radioSubmix",
+			label: "ADMIN_F_RADIO_SUBMIX",
+			hint: "ADMIN_H_SUBMIX"
+		},
+		{
+			widget: "info",
+			path: "radioEffectBy",
+			label: "ADMIN_F_EFFECT_BY",
+			hint: "ADMIN_H_EFFECT_BY",
+			empty: "ADMIN_V_AI_VOICE",
+			mono: !0
+		},
+		{
+			widget: "switch",
+			path: "micClicks",
+			label: "ADMIN_F_MIC_CLICKS",
+			hint: "ADMIN_H_MIC_CLICKS"
+		},
+		{
+			widget: "switch",
+			path: "syncNames",
+			label: "ADMIN_F_SYNC_NAMES",
+			hint: "ADMIN_H_SYNC_NAMES"
+		}
+	]
+}, animCard = {
+	icon: "comments",
+	title: "ADMIN_C_ANIM",
+	desc: "ADMIN_C_ANIM_DESC",
+	fields: [
+		{
+			widget: "switch",
+			path: "radioAnim",
+			label: "ADMIN_F_RADIO_ANIM",
+			hint: "ADMIN_H_RADIO_ANIM"
+		},
+		{
+			widget: "select",
+			path: "radioAnimSet",
+			label: "ADMIN_F_ANIM_SET",
+			hint: "ADMIN_H_ANIM_SET",
+			options: animOptions
+		},
+		{
+			widget: "text",
+			path: "radioAnimDict",
+			label: "ADMIN_F_ANIM_DICT",
+			placeholder: "ADMIN_P_ANIM_DICT",
+			showIf: {
+				path: "radioAnimSet",
+				values: ["custom"]
+			}
+		},
+		{
+			widget: "text",
+			path: "radioAnimClip",
+			label: "ADMIN_F_ANIM_CLIP",
+			placeholder: "ADMIN_P_ANIM_CLIP",
+			showIf: {
+				path: "radioAnimSet",
+				values: ["custom"]
+			}
+		},
+		{
+			widget: "number",
+			path: "radioAnimFlag",
+			label: "ADMIN_F_ANIM_FLAG",
+			hint: "ADMIN_H_ANIM_FLAG",
+			min: 0,
+			max: 1023,
+			showIf: {
+				path: "radioAnimSet",
+				values: ["custom"]
+			}
+		},
+		{
+			widget: "switch",
+			path: "radioAnimInVehicle",
+			label: "ADMIN_F_RADIO_ANIM_VEHICLE"
+		}
+	]
+}, backendCard = {
+	icon: "server",
+	title: "ADMIN_C_BACKEND",
+	desc: "ADMIN_C_BACKEND_DESC",
+	fields: [{
+		widget: "select",
+		path: "backend",
+		label: "ADMIN_F_BACKEND",
+		hint: "ADMIN_H_BACKEND",
+		options: [
+			{
+				value: "auto",
+				label: "ADMIN_O_AUTO"
+			},
+			{
+				value: "enhanced",
+				label: "ADMIN_O_ENHANCED"
+			},
+			{
+				value: "mumble",
+				label: "ADMIN_O_MUMBLE"
+			}
+		]
+	}, {
+		widget: "info",
+		path: "backendActive",
+		label: "ADMIN_F_BACKEND_ACTIVE",
+		values: {
+			enhanced: "ADMIN_O_ENHANCED",
+			mumble: "ADMIN_O_MUMBLE"
+		}
+	}]
+}, rangesCard = {
+	icon: "microphone",
+	title: "ADMIN_C_RANGES",
+	desc: "ADMIN_C_RANGES_DESC",
+	fields: [
+		{
+			widget: "list",
+			path: "modes",
+			label: "ADMIN_F_MODES",
+			addLabel: "ADMIN_ADD_MODE",
+			rowLabel: "ADMIN_ROW_MODE",
+			max: 6,
+			newRow: {
+				label: "Far",
+				distance: 10
+			},
+			rows: [{
+				widget: "text",
+				path: "label",
+				label: "ADMIN_F_MODE_LABEL",
+				placeholder: "ADMIN_P_MODE_LABEL"
+			}, {
+				widget: "number",
+				path: "distance",
+				label: "ADMIN_F_MODE_DISTANCE",
+				hint: "ADMIN_H_MODE_DISTANCE",
+				min: RANGE_MIN,
+				max: 100,
+				step: .5,
+				unit: "m"
+			}]
+		},
+		{
+			widget: "number",
+			path: "defaultMode",
+			label: "ADMIN_F_DEFAULT_MODE",
+			hint: "ADMIN_H_DEFAULT_MODE",
+			min: 1,
+			max: 6
+		},
+		{
+			widget: "switch",
+			path: "cycle",
+			label: "ADMIN_F_CYCLE",
+			hint: "ADMIN_H_CYCLE"
+		},
+		{
+			widget: "number",
+			path: "rangeFactor",
+			label: "ADMIN_F_RANGE_FACTOR",
+			hint: "ADMIN_H_RANGE_FACTOR",
+			min: 1,
+			max: 5,
+			step: .5,
+			unit: "x"
+		}
+	]
+}, volume = {
+	type: "number",
+	min: 0,
+	max: 100,
+	integer: !0
+}, panel = new AdminPanel({
 	title: "ADMIN_TITLE",
 	icon: "microphone",
 	files: {
@@ -1816,7 +2249,7 @@ const volume$1 = {
 					max: 5
 				},
 				radio: { type: "bool" },
-				radioVolume: volume$1,
+				radioVolume: volume,
 				maxRadioChannels: {
 					type: "number",
 					min: 1,
@@ -1849,7 +2282,7 @@ const volume$1 = {
 				micClicks: { type: "bool" },
 				syncNames: { type: "bool" },
 				phone: { type: "bool" },
-				phoneVolume: volume$1,
+				phoneVolume: volume,
 				phoneSubmix: { type: "bool" },
 				clientCalls: { type: "bool" },
 				speaker: { type: "bool" },
@@ -1858,7 +2291,7 @@ const volume$1 = {
 					min: .5,
 					max: 15
 				},
-				speakerVolume: volume$1,
+				speakerVolume: volume,
 				speakerBidirectional: { type: "bool" },
 				backendActive: {
 					type: "enum",
@@ -1878,45 +2311,7 @@ const volume$1 = {
 			},
 			defaults: SETTINGS_DEFAULTS
 		},
-		channels: {
-			kind: "records",
-			sync: "all",
-			labelPath: "label",
-			newRecord: {
-				from: 1,
-				to: 10,
-				jobs: ["police"],
-				onDuty: !0,
-				anim: ""
-			},
-			sections: {
-				label: {
-					type: "text",
-					min: 1,
-					max: 48
-				},
-				from: {
-					type: "number",
-					min: .01,
-					max: CHANNEL_MAX
-				},
-				to: {
-					type: "number",
-					min: .01,
-					max: CHANNEL_MAX
-				},
-				...ACCESS_FIELDS,
-				anim: {
-					type: "enum",
-					values: [
-						"",
-						"none",
-						...ANIM_SET_NAMES
-					],
-					optional: !0
-				}
-			}
-		}
+		channels: channelsFile
 	},
 	tabs: [{
 		id: "settings",
@@ -1925,398 +2320,14 @@ const volume$1 = {
 		label: "ADMIN_TAB_SETTINGS",
 		desc: "ADMIN_TAB_SETTINGS_DESC",
 		cards: [
-			{
-				icon: "server",
-				title: "ADMIN_C_BACKEND",
-				desc: "ADMIN_C_BACKEND_DESC",
-				fields: [{
-					widget: "select",
-					path: "backend",
-					label: "ADMIN_F_BACKEND",
-					hint: "ADMIN_H_BACKEND",
-					options: [
-						{
-							value: "auto",
-							label: "ADMIN_O_AUTO"
-						},
-						{
-							value: "enhanced",
-							label: "ADMIN_O_ENHANCED"
-						},
-						{
-							value: "mumble",
-							label: "ADMIN_O_MUMBLE"
-						}
-					]
-				}, {
-					widget: "info",
-					path: "backendActive",
-					label: "ADMIN_F_BACKEND_ACTIVE",
-					values: {
-						enhanced: "ADMIN_O_ENHANCED",
-						mumble: "ADMIN_O_MUMBLE"
-					}
-				}]
-			},
-			{
-				icon: "microphone",
-				title: "ADMIN_C_RANGES",
-				desc: "ADMIN_C_RANGES_DESC",
-				fields: [
-					{
-						widget: "list",
-						path: "modes",
-						label: "ADMIN_F_MODES",
-						addLabel: "ADMIN_ADD_MODE",
-						rowLabel: "ADMIN_ROW_MODE",
-						max: 6,
-						newRow: {
-							label: "Far",
-							distance: 10
-						},
-						rows: [{
-							widget: "text",
-							path: "label",
-							label: "ADMIN_F_MODE_LABEL",
-							placeholder: "ADMIN_P_MODE_LABEL"
-						}, {
-							widget: "number",
-							path: "distance",
-							label: "ADMIN_F_MODE_DISTANCE",
-							hint: "ADMIN_H_MODE_DISTANCE",
-							min: RANGE_MIN,
-							max: 100,
-							step: .5,
-							unit: "m"
-						}]
-					},
-					{
-						widget: "number",
-						path: "defaultMode",
-						label: "ADMIN_F_DEFAULT_MODE",
-						hint: "ADMIN_H_DEFAULT_MODE",
-						min: 1,
-						max: 6
-					},
-					{
-						widget: "switch",
-						path: "cycle",
-						label: "ADMIN_F_CYCLE",
-						hint: "ADMIN_H_CYCLE"
-					},
-					{
-						widget: "number",
-						path: "rangeFactor",
-						label: "ADMIN_F_RANGE_FACTOR",
-						hint: "ADMIN_H_RANGE_FACTOR",
-						min: 1,
-						max: 5,
-						step: .5,
-						unit: "x"
-					}
-				]
-			},
-			{
-				icon: "comments",
-				title: "ADMIN_C_RADIO",
-				desc: "ADMIN_C_RADIO_DESC",
-				fields: [
-					{
-						widget: "switch",
-						path: "radio",
-						label: "ADMIN_F_RADIO"
-					},
-					pct("radioVolume", "ADMIN_F_RADIO_VOLUME", "ADMIN_H_VOLUME"),
-					{
-						widget: "number",
-						path: "maxRadioChannels",
-						label: "ADMIN_F_MAX_CHANNELS",
-						hint: "ADMIN_H_MAX_CHANNELS",
-						min: 1,
-						max: 10
-					},
-					{
-						widget: "switch",
-						path: "radioSubmix",
-						label: "ADMIN_F_RADIO_SUBMIX",
-						hint: "ADMIN_H_SUBMIX"
-					},
-					{
-						widget: "info",
-						path: "radioEffectBy",
-						label: "ADMIN_F_EFFECT_BY",
-						hint: "ADMIN_H_EFFECT_BY",
-						empty: "ADMIN_V_AI_VOICE",
-						mono: !0
-					},
-					{
-						widget: "switch",
-						path: "micClicks",
-						label: "ADMIN_F_MIC_CLICKS",
-						hint: "ADMIN_H_MIC_CLICKS"
-					},
-					{
-						widget: "switch",
-						path: "syncNames",
-						label: "ADMIN_F_SYNC_NAMES",
-						hint: "ADMIN_H_SYNC_NAMES"
-					}
-				]
-			},
-			{
-				icon: "comments",
-				title: "ADMIN_C_ANIM",
-				desc: "ADMIN_C_ANIM_DESC",
-				fields: [
-					{
-						widget: "switch",
-						path: "radioAnim",
-						label: "ADMIN_F_RADIO_ANIM",
-						hint: "ADMIN_H_RADIO_ANIM"
-					},
-					{
-						widget: "select",
-						path: "radioAnimSet",
-						label: "ADMIN_F_ANIM_SET",
-						hint: "ADMIN_H_ANIM_SET",
-						options: animOptions
-					},
-					{
-						widget: "text",
-						path: "radioAnimDict",
-						label: "ADMIN_F_ANIM_DICT",
-						placeholder: "ADMIN_P_ANIM_DICT",
-						showIf: {
-							path: "radioAnimSet",
-							values: ["custom"]
-						}
-					},
-					{
-						widget: "text",
-						path: "radioAnimClip",
-						label: "ADMIN_F_ANIM_CLIP",
-						placeholder: "ADMIN_P_ANIM_CLIP",
-						showIf: {
-							path: "radioAnimSet",
-							values: ["custom"]
-						}
-					},
-					{
-						widget: "number",
-						path: "radioAnimFlag",
-						label: "ADMIN_F_ANIM_FLAG",
-						hint: "ADMIN_H_ANIM_FLAG",
-						min: 0,
-						max: 1023,
-						showIf: {
-							path: "radioAnimSet",
-							values: ["custom"]
-						}
-					},
-					{
-						widget: "switch",
-						path: "radioAnimInVehicle",
-						label: "ADMIN_F_RADIO_ANIM_VEHICLE"
-					}
-				]
-			},
-			{
-				icon: "comments",
-				title: "ADMIN_C_PHONE",
-				desc: "ADMIN_C_PHONE_DESC",
-				fields: [
-					{
-						widget: "switch",
-						path: "phone",
-						label: "ADMIN_F_PHONE"
-					},
-					pct("phoneVolume", "ADMIN_F_PHONE_VOLUME", "ADMIN_H_VOLUME"),
-					{
-						widget: "switch",
-						path: "phoneSubmix",
-						label: "ADMIN_F_PHONE_SUBMIX",
-						hint: "ADMIN_H_PHONE_SUBMIX"
-					},
-					{
-						widget: "info",
-						path: "phoneEffectBy",
-						label: "ADMIN_F_EFFECT_BY",
-						hint: "ADMIN_H_EFFECT_BY",
-						empty: "ADMIN_V_AI_VOICE",
-						mono: !0
-					},
-					{
-						widget: "switch",
-						path: "clientCalls",
-						label: "ADMIN_F_CLIENT_CALLS",
-						hint: "ADMIN_H_CLIENT_CALLS"
-					},
-					{
-						widget: "switch",
-						path: "speaker",
-						label: "ADMIN_F_SPEAKER",
-						hint: "ADMIN_H_SPEAKER"
-					},
-					{
-						widget: "number",
-						path: "speakerRadius",
-						label: "ADMIN_F_SPEAKER_RADIUS",
-						hint: "ADMIN_H_SPEAKER_RADIUS",
-						min: .5,
-						max: 15,
-						step: .5,
-						unit: "m"
-					},
-					pct("speakerVolume", "ADMIN_F_SPEAKER_VOLUME", "ADMIN_H_VOLUME"),
-					{
-						widget: "switch",
-						path: "speakerBidirectional",
-						label: "ADMIN_F_SPEAKER_TWO_WAY",
-						hint: "ADMIN_H_SPEAKER_TWO_WAY"
-					}
-				]
-			}
+			backendCard,
+			rangesCard,
+			radioCard,
+			animCard,
+			phoneCard
 		]
-	}, {
-		id: "channels",
-		file: "channels",
-		icon: "lock",
-		label: "ADMIN_TAB_CHANNELS",
-		desc: "ADMIN_TAB_CHANNELS_DESC",
-		listSub: "jobs",
-		createLabel: "ADMIN_NEW_CHANNEL",
-		deleteLabel: "ADMIN_DELETE_CHANNEL",
-		cards: [{
-			icon: "lock",
-			title: "ADMIN_C_CHANNEL",
-			desc: "ADMIN_C_CHANNEL_DESC",
-			fields: [
-				{
-					widget: "text",
-					path: "label",
-					label: "ADMIN_F_CHANNEL_NAME",
-					placeholder: "ADMIN_P_CHANNEL_NAME"
-				},
-				{
-					widget: "number",
-					path: "from",
-					label: "ADMIN_F_CHANNEL_FROM",
-					hint: "ADMIN_H_CHANNEL_RANGE",
-					min: .01,
-					max: CHANNEL_MAX,
-					step: .01
-				},
-				{
-					widget: "number",
-					path: "to",
-					label: "ADMIN_F_CHANNEL_TO",
-					hint: "ADMIN_H_CHANNEL_RANGE",
-					min: .01,
-					max: CHANNEL_MAX,
-					step: .01
-				},
-				...accessFields(),
-				{
-					widget: "select",
-					path: "anim",
-					label: "ADMIN_F_CHANNEL_ANIM",
-					hint: "ADMIN_H_CHANNEL_ANIM",
-					options: [
-						{
-							value: "",
-							label: "ADMIN_O_ANIM_DEFAULT"
-						},
-						{
-							value: "none",
-							label: "ADMIN_O_ANIM_NONE"
-						},
-						...animOptions
-					]
-				}
-			]
-		}]
-	}]
-}, log$5 = createLogger(ResourceName), CONVARS = [
-	{
-		name: "voice_defaultVoiceMode",
-		keys: ["defaultMode"],
-		read: int
-	},
-	{
-		name: "voice_enableProximityCycle",
-		keys: ["cycle"],
-		read: flag
-	},
-	{
-		name: "voice_enableRadios",
-		keys: ["radio"],
-		read: flag
-	},
-	{
-		name: "voice_enablePhones",
-		keys: ["phone"],
-		read: flag
-	},
-	{
-		name: "voice_defaultRadioVolume",
-		keys: ["radioVolume"],
-		read: volume
-	},
-	{
-		name: "voice_defaultPhoneVolume",
-		keys: ["phoneVolume"],
-		read: volume
-	},
-	{
-		name: "voice_defaultCallVolume",
-		keys: ["phoneVolume"],
-		read: volume
-	},
-	{
-		name: "voice_enableSubmix",
-		keys: ["radioSubmix", "phoneSubmix"],
-		read: flag
-	},
-	{
-		name: "voice_enableRadioAnim",
-		keys: ["radioAnim"],
-		read: flag
-	},
-	{
-		name: "voice_disableVehicleRadioAnim",
-		keys: ["radioAnimInVehicle"],
-		read: (raw) => !flag(raw)
-	},
-	{
-		name: "voice_syncPlayerNames",
-		keys: ["syncNames"],
-		read: flag
-	}
-];
-function int(raw) {
-	let n = Number(raw);
-	return Number.isInteger(n) && n >= 1 && n <= 6 ? n : void 0;
-}
-function flag(raw) {
-	return raw === "1" || raw === "true";
-}
-function volume(raw) {
-	let n = Number(raw);
-	if (!(!Number.isFinite(n) || n < 0)) return Math.round(Math.min(100, n <= 1 && raw.includes(".") ? n * 100 : n));
-}
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-function seedFromConvars(panel) {
-	let settings = panel.get("settings");
-	for (let convar of CONVARS) {
-		let raw = GetConvar(convar.name, "");
-		if (raw === "") continue;
-		let value = convar.read(raw);
-		if (value === void 0) log$5.warn(`${convar.name} "${raw}" is not a valid value, ignored`);
-		else for (let key of convar.keys) same(settings[key], SETTINGS_DEFAULTS[key]) && (same(value, SETTINGS_DEFAULTS[key]) || (panel.commit("settings", key, value), log$5.info(`${key} set from the cfg convar ${convar.name} (${raw})`)));
-	}
-}
-// resource/server/content.ts
-const panel = new AdminPanel(schema);
+	}, channelsTab]
+});
 setImmediate(() => seedFromConvars(panel)), panel.rule("channels", (_key, next) => isRecord(next) && num(next.from, 0) > num(next.to, 0) ? "ADMIN_ERR_CHANNEL_RANGE" : null);
 const content = new class {
 	settings = readSettings(panel.get("settings"));
@@ -2350,82 +2361,7 @@ const content = new class {
 			});
 		});
 	}
-}(), log$4 = createLogger(ResourceName);
-function register(map, key, fn) {
-	return typeof fn == "function" && (map.set(key, fn), !0);
-}
-function ask(fn, ...args) {
-	try {
-		return fn(...args);
-	} catch (error) {
-		return log$4.error("a voice check from another resource failed", error), !1;
-	}
-}
-const checks = new class {
-	radio = new ByResource();
-	modes = new ByResource();
-	names = new ByResource();
-	calls = new ByResource();
-	addCallCheck(fn) {
-		return register(this.calls, caller(), fn);
-	}
-	canClientJoinCall(source, call) {
-		if (content.settings.clientCalls) return !0;
-		for (let fn of this.calls.values()) if (ask(fn, source, call) === !0) return !0;
-		return !1;
-	}
-	addRadioCheck(channel, fn) {
-		return register(this.radio, channel, fn);
-	}
-	addModeCheck(fn) {
-		return register(this.modes, caller(), fn);
-	}
-	setNameGetter(fn) {
-		return register(this.names, "name", fn);
-	}
-	canJoinRadio(source, channel) {
-		if (!this.jobAllows(source, channel)) return !1;
-		let fn = this.radio.get(channel);
-		return !fn || !!ask(fn, source);
-	}
-	jobAllows(source, channel) {
-		let rule = content.frequencyOf(channel);
-		return !rule || online.allows(source, rule.access);
-	}
-	canSetRange(source, index, distance) {
-		for (let fn of this.modes.values()) if (ask(fn, source, index, distance) === !1) return !1;
-		return !0;
-	}
-	radioName(source) {
-		let fn = this.names.get("name"), custom = fn ? ask(fn, source) : null;
-		return typeof custom == "string" ? custom : online.name(source);
-	}
-}(), log$3 = createLogger(ResourceName);
-function registerCommands(players, groups, mutes, router) {
-	addCommand("muteply", {
-		help: Locale("COMMAND_MUTE"),
-		restricted: !0,
-		params: [{
-			name: "id",
-			type: "playerId",
-			help: Locale("COMMAND_P_ID")
-		}, {
-			name: "seconds",
-			type: "number",
-			help: Locale("COMMAND_P_SECONDS"),
-			optional: !0
-		}]
-	}, (source, args) => mutes.toggle(args.id, source, args.seconds ?? 900)), addCommand("voicedebug", {
-		help: Locale("COMMAND_DEBUG"),
-		restricted: !0
-	}, () => {
-		log$3.info(`backend ${router.backend}`);
-		for (let p of players.all()) log$3.info(`${p.source}: range ${p.distance} m (mode ${p.mode}) radio ${p.radio} [${[...p.radios].join(",")}] call ${p.call}${p.speaker ? " speaker" : ""}${p.muted ? " muted" : ""}`);
-		for (let line of [...groups.describe(), ...router.describe()]) log$3.info(line);
-	});
-}
-// resource/server/natives.ts
-const HASH = {
+}(), HASH = {
 	create: "0x7A70A736",
 	remove: "0x0D3A0512",
 	add: "0xEA8CA2F5",
@@ -2448,7 +2384,7 @@ function hasEnhancedVoice() {
 		return !1;
 	}
 }
-// resource/server/channel.ts
+// resource/server/routing/channel.ts
 var VoiceChannel = class VoiceChannel {
 	id;
 	label;
@@ -2494,12 +2430,36 @@ var VoiceChannel = class VoiceChannel {
 		return `${this.label}#${this.id} [${list}]`;
 	}
 };
-// resource/server/enhanced.ts
-const log$2 = createLogger(ResourceName);
+// resource/server/routing/bucket.ts
+const log$8 = createLogger(ResourceName);
 var Bucket = class {
 	channels = new Map();
 	talkers = new Map();
-}, EnhancedRouter = class {
+	channel(distance) {
+		if (this.channels.has(distance)) return;
+		let channel = VoiceChannel.spatial(distance, `proximity ${distance}m`);
+		if (!channel) return log$8.error("voice channel limit reached");
+		this.channels.set(distance, channel);
+		for (let talker of this.talkers.values()) channel.add(talker.source, talker.muted || talker.distance !== distance);
+	}
+	pruneChannels(modeDistances) {
+		let keep = new Set(modeDistances);
+		for (let talker of this.talkers.values()) keep.add(talker.distance);
+		for (let [distance, channel] of this.channels) keep.has(distance) || (channel.destroy(), this.channels.delete(distance));
+	}
+};
+// resource/server/routing/flatChannels.ts
+const log$7 = createLogger(ResourceName);
+function flatChannel(map, id, kind) {
+	let channel = map.get(id) ?? null;
+	return channel || (channel = VoiceChannel.flat(`${kind} ${id}`), channel ? (map.set(id, channel), channel) : (log$7.error("voice channel limit reached"), null));
+}
+function leaveFlatChannel(map, id, source) {
+	let channel = map.get(id);
+	channel && (channel.remove(source), channel.size > 0 || (channel.destroy(), map.delete(id)));
+}
+// resource/server/routing/enhanced.ts
+var EnhancedRouter = class {
 	modeDistances;
 	backend = "enhanced";
 	buckets = new Map();
@@ -2514,7 +2474,7 @@ var Bucket = class {
 		let bucketId = GetPlayerRoutingBucket(String(talker.source));
 		this.bucketOf.set(talker.source, bucketId);
 		let bucket = this.bucket(bucketId);
-		bucket.talkers.set(talker.source, talker), this.channel(bucket, talker.distance);
+		bucket.talkers.set(talker.source, talker), bucket.channel(talker.distance);
 		for (let [distance, channel] of bucket.channels) channel.add(talker.source, talker.muted || distance !== talker.distance);
 	}
 	forget(source) {
@@ -2533,17 +2493,17 @@ var Bucket = class {
 	update(talker) {
 		let bucketId = this.bucketOf.get(talker.source), bucket = bucketId === void 0 ? null : this.buckets.get(bucketId);
 		if (bucketId === void 0 || !bucket) return this.join(talker);
-		bucket.talkers.set(talker.source, talker), this.channel(bucket, talker.distance);
+		bucket.talkers.set(talker.source, talker), bucket.channel(talker.distance);
 		for (let [distance, channel] of bucket.channels) channel.setMuted(talker.source, talker.muted || distance !== talker.distance);
 		for (let channel of this.calls.values()) channel.setMuted(talker.source, talker.muted);
 		if (talker.muted) for (let channel of this.radios.values()) channel.setMuted(talker.source, !0);
 		this.prune(bucketId, bucket);
 	}
 	radioJoin(source, channel) {
-		this.group(this.radios, channel, "radio")?.add(source, !0);
+		flatChannel(this.radios, channel, "radio")?.add(source, !0);
 	}
 	radioLeave(source, channel) {
-		this.leaveGroup(this.radios, channel, source);
+		leaveFlatChannel(this.radios, channel, source);
 	}
 	radioTalk(source, channel, talking) {
 		let muted = this.bucketTalker(source)?.muted ?? !1;
@@ -2551,10 +2511,10 @@ var Bucket = class {
 	}
 	callJoin(source, channel) {
 		let muted = this.bucketTalker(source)?.muted ?? !1;
-		this.group(this.calls, channel, "call")?.add(source, muted);
+		flatChannel(this.calls, channel, "call")?.add(source, muted);
 	}
 	callLeave(source, channel) {
-		this.leaveGroup(this.calls, channel, source);
+		leaveFlatChannel(this.calls, channel, source);
 	}
 	callBystander(source, channel, on, talks) {
 		let call = this.calls.get(channel);
@@ -2590,30 +2550,11 @@ var Bucket = class {
 		let id = this.bucketOf.get(source);
 		return id === void 0 ? void 0 : this.buckets.get(id)?.talkers.get(source);
 	}
-	channel(bucket, distance) {
-		if (bucket.channels.has(distance)) return;
-		let channel = VoiceChannel.spatial(distance, `proximity ${distance}m`);
-		if (!channel) return log$2.error("voice channel limit reached");
-		bucket.channels.set(distance, channel);
-		for (let talker of bucket.talkers.values()) channel.add(talker.source, talker.muted || talker.distance !== distance);
-	}
 	prune(id, bucket) {
 		if (bucket.talkers.size === 0) {
 			for (let channel of bucket.channels.values()) channel.destroy();
 			this.buckets.delete(id);
-			return;
-		}
-		let keep = new Set(this.modeDistances());
-		for (let talker of bucket.talkers.values()) keep.add(talker.distance);
-		for (let [distance, channel] of bucket.channels) keep.has(distance) || (channel.destroy(), bucket.channels.delete(distance));
-	}
-	group(map, id, kind) {
-		let channel = map.get(id) ?? null;
-		return channel || (channel = VoiceChannel.flat(`${kind} ${id}`), channel ? (map.set(id, channel), channel) : (log$2.error("voice channel limit reached"), null));
-	}
-	leaveGroup(map, id, source) {
-		let channel = map.get(id);
-		channel && (channel.remove(source), channel.size > 0 || (channel.destroy(), map.delete(id)));
+		} else bucket.pruneChannels(this.modeDistances());
 	}
 	watchBuckets() {
 		for (let [source, id] of this.bucketOf) {
@@ -2627,84 +2568,119 @@ var Bucket = class {
 			talker && this.join(talker);
 		}
 	}
+}, MumbleRouter = class {
+	backend = "mumble";
+	muted = new Set();
+	constructor() {
+		SetConvarReplicated("voice_useNativeAudio", "true"), SetConvarReplicated("voice_useSendingRangeOnly", "true");
+	}
+	join(talker) {
+		this.update(talker);
+	}
+	forget(source) {
+		this.muted.delete(source);
+	}
+	update(talker) {
+		talker.muted !== this.muted.has(talker.source) && (talker.muted ? this.muted.add(talker.source) : this.muted.delete(talker.source), MumbleSetPlayerMuted(talker.source, talker.muted));
+	}
+	radioJoin() {}
+	radioLeave() {}
+	radioTalk() {}
+	callJoin() {}
+	callLeave() {}
+	callBystander() {}
+	rebuild() {}
+	stop() {
+		for (let source of this.muted) MumbleSetPlayerMuted(source, !1);
+		this.muted.clear();
+	}
+	describe() {
+		return [`server-muted: ${[...this.muted].join(",") || "none"}`];
+	}
 };
-// resource/server/exports.ts
-const submixBag = new PlayerState(KEYS.submix, stateString);
-function both(name, fn) {
-	registerExport(name, fn), provideExport("pma-voice", name, fn);
+// resource/server/routing/backend.ts
+const log$6 = createLogger(ResourceName);
+function chooseBackend() {
+	let wanted = content.settings.backend, enhanced = wanted !== "mumble" && hasEnhancedVoice();
+	return wanted === "enhanced" && !enhanced && log$6.error("Enhanced voice API missing on this server, using Mumble"), enhanced ? "enhanced" : "mumble";
 }
-const toSource = (v) => {
-	let n = typeof v == "string" ? Number(v) : v;
-	return typeof n == "number" && Number.isInteger(n) && n > 0 ? n : null;
-};
-function channelArg(value, what) {
-	let channel = toChannel(value);
-	if (channel === null) throw Error(`'${what}' expected a number`);
-	return channel;
-}
-function registerServerExports(s) {
-	both("setPlayerRadio", (source, channel) => {
-		let src = toSource(source);
-		src && s.groups.setRadio(src, channelArg(channel, "radioChannel"));
-	}), both("setPlayerCall", (source, channel) => {
-		let src = toSource(source);
-		src && s.groups.setCall(src, channelArg(channel, "callChannel"), !0);
-	});
-	let members = (channel) => {
-		let id = toChannel(channel);
-		return id === null ? {} : s.groups.radioMembers(id);
+const backend = chooseBackend(), router = backend === "enhanced" ? new EnhancedRouter(() => content.settings.modes.map((m) => m.distance)) : new MumbleRouter(), log$5 = createLogger(ResourceName);
+new GlobalKey(KEYS.backend, parseBackend).set(backend), content.showStatus({ backendActive: backend }), log$5.info(`voice backend: ${backend}`), onStop(() => router.stop());
+// resource/common/takeover.ts
+const parseTakeover = (v) => isRecord(v) ? {
+	radio: typeof v.radio == "string" ? v.radio : null,
+	phone: typeof v.phone == "string" ? v.phone : null
+} : void 0, log$4 = createLogger(ResourceName), takeoverKey = new GlobalKey(KEYS.takeover, parseTakeover), RADIO = ["tgiann-radio-v2", "tgiann-radio"], PHONE = ["tgiann-phone"], WATCHED = new Set([...RADIO, ...PHONE]), detect = () => ({
+	radio: RADIO.find((name) => isResourceStarted(name)) ?? null,
+	phone: PHONE.find((name) => isResourceStarted(name)) ?? null
+});
+function watchTakeover() {
+	let first = !0, apply = () => {
+		let next = detect(), old = takeoverKey.get();
+		(first || old?.radio !== next.radio || old?.phone !== next.phone) && (first = !1, takeoverKey.set(next), content.showStatus({
+			radioEffectBy: next.radio ?? "",
+			phoneEffectBy: next.phone ?? ""
+		}), next.radio && log$4.info(`${next.radio} brings its own radio effect`), next.phone && log$4.info(`${next.phone} brings its own phone effect`));
 	};
-	both("getPlayersInRadioChannel", members), both("GetPlayersInRadioChannel", members), both("addChannelCheck", (channel, fn) => {
-		if (!checks.addRadioCheck(channelArg(channel, "channel"), fn)) throw Error("'cb' expected a function");
-	}), both("overrideRadioNameGetter", (_channel, fn) => {
-		if (!checks.setNameGetter(fn)) throw Error("'cb' expected a function");
-	}), both("isValidPlayer", (source) => {
-		let src = toSource(source);
-		return src !== null && s.players.get(src) !== void 0;
-	}), registerExport("getBackend", () => s.router.backend), registerExport("setPlayerProximityMode", (source, index) => {
-		let src = toSource(source);
-		return src !== null && typeof index == "number" && s.players.setMode(src, index);
-	}), registerExport("setPlayerRange", (source, range) => {
-		let src = toSource(source);
-		return src === null ? !1 : range == null ? s.players.setRange(src, null) : typeof range == "number" && range >= .5 && range <= 100 && s.players.setRange(src, range);
-	}), registerExport("getPlayerProximity", (source) => {
-		let src = toSource(source);
-		return src !== null && s.players.get(src)?.proximity() || null;
-	}), registerExport("toggleMute", (source, seconds) => {
-		let src = toSource(source), time = typeof seconds == "number" && seconds > 0 ? seconds : 900;
-		return src !== null && s.mutes.toggle(src, 0, time);
-	}), registerExport("addProximityCheck", (fn) => {
-		if (!checks.addModeCheck(fn)) throw Error("expected a function");
-	}), registerExport("addPlayerRadioListen", (source, channel) => {
-		let src = toSource(source);
-		return src !== null && s.groups.listen(src, channelArg(channel, "channel"), !0);
-	}), registerExport("removePlayerRadioListen", (source, channel) => {
-		let src = toSource(source);
-		return src !== null && s.groups.listen(src, channelArg(channel, "channel"), !1);
-	}), registerExport("setPlayerRadioActive", (source, channel) => {
-		let src = toSource(source);
-		return src !== null && s.groups.setActive(src, channelArg(channel, "channel"));
-	}), registerExport("getPlayerRadioChannels", (source) => {
-		let src = toSource(source), player = src === null ? void 0 : s.players.get(src);
-		return player ? {
-			active: player.radio,
-			channels: [...player.radios]
-		} : null;
-	}), registerExport("addCallCheck", (fn) => {
-		if (!checks.addCallCheck(fn)) throw Error("expected a function");
-	}), registerExport("setPlayerCallSpeaker", (source, on) => {
-		let src = toSource(source);
-		return src !== null && s.speakers.set(src, on === !0);
-	}), registerExport("getPlayerCallSpeaker", (source) => {
-		let src = toSource(source);
-		return src !== null && s.speakers.isOn(src);
-	}), registerExport("setPlayerSubmix", (source, name) => {
-		let src = toSource(source);
-		src !== null && submixBag.set(src, typeof name == "string" && name ? name : void 0);
-	});
+	apply();
+	let changed = (resource) => {
+		WATCHED.has(resource) && setTimeout(apply, 0);
+	};
+	on("onResourceStart", changed), on("onResourceStop", changed);
 }
-// resource/server/players.ts
-const proximityBag = new PlayerState(PLAYER_BAGS.proximity, parseProximity), radioBag = new PlayerState(KEYS.radioChannel, stateNumber), callBag = new PlayerState(KEYS.callChannel, stateNumber), mutedBag = new PlayerState(KEYS.muted, stateBoolean), speakerBag = new PlayerState(KEYS.callSpeaker, stateBoolean);
+watchTakeover();
+// resource/server/checks.ts
+const log$3 = createLogger(ResourceName);
+function register(map, key, fn) {
+	return typeof fn == "function" && (map.set(key, fn), !0);
+}
+function ask(fn, ...args) {
+	try {
+		return fn(...args);
+	} catch (error) {
+		return log$3.error("a voice check from another resource failed", error), !1;
+	}
+}
+const checks = new class {
+	radio = new ByResource();
+	modes = new ByResource();
+	names = new ByResource();
+	calls = new ByResource();
+	addCallCheck(fn) {
+		return register(this.calls, caller(), fn);
+	}
+	canClientJoinCall(source, call) {
+		if (content.settings.clientCalls) return !0;
+		for (let fn of this.calls.values()) if (ask(fn, source, call) === !0) return !0;
+		return !1;
+	}
+	addRadioCheck(channel, fn) {
+		return register(this.radio, channel, fn);
+	}
+	addModeCheck(fn) {
+		return register(this.modes, caller(), fn);
+	}
+	setNameGetter(fn) {
+		return register(this.names, "name", fn);
+	}
+	canJoinRadio(source, channel) {
+		if (!this.jobAllows(source, channel)) return !1;
+		let fn = this.radio.get(channel);
+		return !fn || !!ask(fn, source);
+	}
+	jobAllows(source, channel) {
+		let rule = content.frequencyOf(channel);
+		return !rule || online.allows(source, rule.access);
+	}
+	canSetRange(source, index, distance) {
+		for (let fn of this.modes.values()) if (ask(fn, source, index, distance) === !1) return !1;
+		return !0;
+	}
+	radioName(source) {
+		let fn = this.names.get("name"), custom = fn ? ask(fn, source) : null;
+		return typeof custom == "string" ? custom : online.name(source);
+	}
+}(), proximityBag = new PlayerState(PLAYER_BAGS.proximity, parseProximity), radioBag = new PlayerState(KEYS.radioChannel, stateNumber), callBag = new PlayerState(KEYS.callChannel, stateNumber), mutedBag = new PlayerState(KEYS.muted, stateBoolean), speakerBag = new PlayerState(KEYS.callSpeaker, stateBoolean);
 var VoicePlayer = class {
 	source;
 	mode;
@@ -2776,16 +2752,42 @@ var VoicePlayer = class {
 		proximityBag.set(player.source, player.proximity()), this.router.update(player);
 	}
 };
-// resource/server/groups.ts
-const table = (members) => Object.fromEntries(members);
-var Groups = class {
+// resource/server/groups/members.ts
+const table = (members) => Object.fromEntries(members), describeMembers = (kind, map) => [...map].map(([id, m]) => `${kind} ${id}: ${[...m.keys()].join(",")}`);
+// resource/server/groups/calls.ts
+var CallMembers = class {
+	router;
+	calls = new Map();
+	constructor(router) {
+		this.router = router;
+	}
+	members(channel) {
+		return this.calls.get(channel) ?? new Map();
+	}
+	join(source, channel) {
+		let members = this.calls.get(channel);
+		members || this.calls.set(channel, members = new Map());
+		for (let member of members.keys()) emitNet(PMA.addPlayerToCall, member, source);
+		members.set(source, !1), emitNet(PMA.syncCallData, source, table(members)), this.router.callJoin(source, channel);
+	}
+	leave(source, channel) {
+		let members = this.calls.get(channel);
+		if (members) {
+			for (let member of members.keys()) emitNet(PMA.removePlayerFromCall, member, source);
+			members.delete(source), members.size === 0 && this.calls.delete(channel), this.router.callLeave(source, channel);
+		}
+	}
+	describe() {
+		return describeMembers("call", this.calls);
+	}
+}, Groups = class {
 	players;
 	router;
 	radios = new Map();
-	calls = new Map();
+	calls;
 	callListeners = [];
 	constructor(players, router) {
-		this.players = players, this.router = router;
+		this.players = players, this.router = router, this.calls = new CallMembers(router);
 	}
 	setRadio(source, channel) {
 		let player = this.players.get(source);
@@ -2823,7 +2825,7 @@ var Groups = class {
 		let player = this.players.get(source);
 		if (!player || !content.settings.phone || (fromScript && emitNet(PMA.clSetPlayerCall, source, channel), player.call === channel)) return;
 		let old = player.call;
-		old !== 0 && this.leaveCall(source, old), player.call = channel, channel !== 0 && this.joinCall(source, channel), callBag.set(source, channel);
+		old !== 0 && this.calls.leave(source, old), player.call = channel, channel !== 0 && this.calls.join(source, channel), callBag.set(source, channel);
 		for (let listener of this.callListeners) listener(source, old);
 	}
 	refuseCall(source) {
@@ -2833,7 +2835,7 @@ var Groups = class {
 		this.callListeners.push(listener);
 	}
 	callMembers(channel) {
-		return this.calls.get(channel) ?? new Map();
+		return this.calls.members(channel);
 	}
 	radioMembers(channel) {
 		let members = this.radios.get(channel);
@@ -2848,11 +2850,10 @@ var Groups = class {
 	}
 	drop(player) {
 		for (let channel of player.radios) this.leaveRadio(player, channel);
-		player.call !== 0 && this.leaveCall(player.source, player.call);
+		player.call !== 0 && this.calls.leave(player.source, player.call);
 	}
 	describe() {
-		let line = (kind, map) => [...map].map(([id, m]) => `${kind} ${id}: ${[...m.keys()].join(",")}`);
-		return [...line("radio", this.radios), ...line("call", this.calls)];
+		return [...describeMembers("radio", this.radios), ...this.calls.describe()];
 	}
 	activate(player, channel) {
 		player.radio !== channel && (this.talk(player, !1), player.radio = channel), emitNet(PMA.clSetPlayerRadio, player.source, channel), radioBag.set(player.source, channel);
@@ -2875,21 +2876,9 @@ var Groups = class {
 			members.delete(player.source), members.size === 0 && this.radios.delete(channel), this.router.radioLeave(player.source, channel);
 		}
 	}
-	joinCall(source, channel) {
-		let members = this.calls.get(channel);
-		members || this.calls.set(channel, members = new Map());
-		for (let member of members.keys()) emitNet(PMA.addPlayerToCall, member, source);
-		members.set(source, !1), emitNet(PMA.syncCallData, source, table(members)), this.router.callJoin(source, channel);
-	}
-	leaveCall(source, channel) {
-		let members = this.calls.get(channel);
-		if (members) {
-			for (let member of members.keys()) emitNet(PMA.removePlayerFromCall, member, source);
-			members.delete(source), members.size === 0 && this.calls.delete(channel), this.router.callLeave(source, channel);
-		}
-	}
 };
 // resource/server/mute.ts
+aiLogChannels({ mutes: {} });
 const licenseOf = (source) => GetPlayerIdentifierByType(String(source), "license") || `source:${source}`;
 var Mutes = class {
 	players;
@@ -2930,35 +2919,6 @@ var Mutes = class {
 			mute.timer && clearTimeout(mute.timer), this.mutes.delete(license);
 			for (let [source, l] of this.online) l === license && (this.apply(source, license, !1), announce && emit(PMA.playerMuted, source, 0, !1, 0));
 		}
-	}
-}, MumbleRouter = class {
-	backend = "mumble";
-	muted = new Set();
-	constructor() {
-		SetConvarReplicated("voice_useNativeAudio", "true"), SetConvarReplicated("voice_useSendingRangeOnly", "true");
-	}
-	join(talker) {
-		this.update(talker);
-	}
-	forget(source) {
-		this.muted.delete(source);
-	}
-	update(talker) {
-		talker.muted !== this.muted.has(talker.source) && (talker.muted ? this.muted.add(talker.source) : this.muted.delete(talker.source), MumbleSetPlayerMuted(talker.source, talker.muted));
-	}
-	radioJoin() {}
-	radioLeave() {}
-	radioTalk() {}
-	callJoin() {}
-	callLeave() {}
-	callBystander() {}
-	rebuild() {}
-	stop() {
-		for (let source of this.muted) MumbleSetPlayerMuted(source, !1);
-		this.muted.clear();
-	}
-	describe() {
-		return [`server-muted: ${[...this.muted].join(",") || "none"}`];
 	}
 };
 // resource/server/speaker.ts
@@ -3041,42 +3001,115 @@ var Speakers = class {
 		}
 	}
 };
-// resource/server/takeover.ts
-const log$1 = createLogger(ResourceName), takeoverKey = new GlobalKey(KEYS.takeover, parseTakeover), RADIO = ["tgiann-radio-v2", "tgiann-radio"], PHONE = ["tgiann-phone"], WATCHED = new Set([...RADIO, ...PHONE]), detect = () => ({
-	radio: RADIO.find((name) => isResourceStarted(name)) ?? null,
-	phone: PHONE.find((name) => isResourceStarted(name)) ?? null
-});
-function watchTakeover() {
-	let first = !0, apply = () => {
-		let next = detect(), old = takeoverKey.get();
-		(first || old?.radio !== next.radio || old?.phone !== next.phone) && (first = !1, takeoverKey.set(next), content.showStatus({
-			radioEffectBy: next.radio ?? "",
-			phoneEffectBy: next.phone ?? ""
-		}), next.radio && log$1.info(`${next.radio} brings its own radio effect`), next.phone && log$1.info(`${next.phone} brings its own phone effect`));
-	};
-	apply();
-	let changed = (resource) => {
-		WATCHED.has(resource) && setTimeout(apply, 0);
-	};
-	on("onResourceStart", changed), on("onResourceStop", changed);
+// resource/server/state.ts
+const players = new Players(router), groups = new Groups(players, router), mutes = new Mutes(players), speakers = new Speakers(players, groups, router), submixBag = new PlayerState(KEYS.submix, stateString);
+function both(name, fn) {
+	registerExport(name, fn), provideExport("pma-voice", name, fn);
 }
-// resource/server/index.ts
-const log = createLogger(ResourceName);
-aiLogChannels({ mutes: {} });
-function chooseBackend() {
-	let wanted = content.settings.backend, enhanced = wanted !== "mumble" && hasEnhancedVoice();
-	return wanted === "enhanced" && !enhanced && log.error("Enhanced voice API missing on this server, using Mumble"), enhanced ? "enhanced" : "mumble";
+const toSource = (v) => {
+	let n = typeof v == "string" ? Number(v) : v;
+	return typeof n == "number" && Number.isInteger(n) && n > 0 ? n : null;
+};
+function channelArg(value, what) {
+	let channel = toChannel(value);
+	if (channel === null) throw Error(`'${what}' expected a number`);
+	return channel;
 }
-const backend = chooseBackend(), router = backend === "enhanced" ? new EnhancedRouter(() => content.settings.modes.map((m) => m.distance)) : new MumbleRouter();
-new GlobalKey(KEYS.backend, parseBackend).set(backend), content.showStatus({ backendActive: backend }), log.info(`voice backend: ${backend}`), watchTakeover();
-const players = new Players(router), groups = new Groups(players, router), mutes = new Mutes(players), speakers = new Speakers(players, groups, router);
+function registerServerExports(s) {
+	both("setPlayerRadio", (source, channel) => {
+		let src = toSource(source);
+		src && s.groups.setRadio(src, channelArg(channel, "radioChannel"));
+	}), both("setPlayerCall", (source, channel) => {
+		let src = toSource(source);
+		src && s.groups.setCall(src, channelArg(channel, "callChannel"), !0);
+	});
+	let members = (channel) => {
+		let id = toChannel(channel);
+		return id === null ? {} : s.groups.radioMembers(id);
+	};
+	both("getPlayersInRadioChannel", members), both("GetPlayersInRadioChannel", members), both("addChannelCheck", (channel, fn) => {
+		if (!checks.addRadioCheck(channelArg(channel, "channel"), fn)) throw Error("'cb' expected a function");
+	}), both("overrideRadioNameGetter", (_channel, fn) => {
+		if (!checks.setNameGetter(fn)) throw Error("'cb' expected a function");
+	}), both("isValidPlayer", (source) => {
+		let src = toSource(source);
+		return src !== null && s.players.get(src) !== void 0;
+	}), registerExport("getBackend", () => s.router.backend), registerExport("setPlayerProximityMode", (source, index) => {
+		let src = toSource(source);
+		return src !== null && typeof index == "number" && s.players.setMode(src, index);
+	}), registerExport("setPlayerRange", (source, range) => {
+		let src = toSource(source);
+		return src === null ? !1 : range == null ? s.players.setRange(src, null) : typeof range == "number" && range >= .5 && range <= 100 && s.players.setRange(src, range);
+	}), registerExport("getPlayerProximity", (source) => {
+		let src = toSource(source);
+		return src !== null && s.players.get(src)?.proximity() || null;
+	}), registerExport("toggleMute", (source, seconds) => {
+		let src = toSource(source), time = typeof seconds == "number" && seconds > 0 ? seconds : 900;
+		return src !== null && s.mutes.toggle(src, 0, time);
+	}), registerExport("addProximityCheck", (fn) => {
+		if (!checks.addModeCheck(fn)) throw Error("expected a function");
+	}), registerExport("addPlayerRadioListen", (source, channel) => {
+		let src = toSource(source);
+		return src !== null && s.groups.listen(src, channelArg(channel, "channel"), !0);
+	}), registerExport("removePlayerRadioListen", (source, channel) => {
+		let src = toSource(source);
+		return src !== null && s.groups.listen(src, channelArg(channel, "channel"), !1);
+	}), registerExport("setPlayerRadioActive", (source, channel) => {
+		let src = toSource(source);
+		return src !== null && s.groups.setActive(src, channelArg(channel, "channel"));
+	}), registerExport("getPlayerRadioChannels", (source) => {
+		let src = toSource(source), player = src === null ? void 0 : s.players.get(src);
+		return player ? {
+			active: player.radio,
+			channels: [...player.radios]
+		} : null;
+	}), registerExport("addCallCheck", (fn) => {
+		if (!checks.addCallCheck(fn)) throw Error("expected a function");
+	}), registerExport("setPlayerCallSpeaker", (source, on) => {
+		let src = toSource(source);
+		return src !== null && s.speakers.set(src, on === !0);
+	}), registerExport("getPlayerCallSpeaker", (source) => {
+		let src = toSource(source);
+		return src !== null && s.speakers.isOn(src);
+	}), registerExport("setPlayerSubmix", (source, name) => {
+		let src = toSource(source);
+		src !== null && submixBag.set(src, typeof name == "string" && name ? name : void 0);
+	});
+}
 registerServerExports({
 	players,
 	groups,
 	mutes,
 	router,
 	speakers
-}), registerCommands(players, groups, mutes, router);
+});
+// resource/server/commands.ts
+const log$2 = createLogger(ResourceName);
+function registerCommands(players, groups, mutes, router) {
+	addCommand("muteply", {
+		help: Locale("COMMAND_MUTE"),
+		restricted: !0,
+		params: [{
+			name: "id",
+			type: "playerId",
+			help: Locale("COMMAND_P_ID")
+		}, {
+			name: "seconds",
+			type: "number",
+			help: Locale("COMMAND_P_SECONDS"),
+			optional: !0
+		}]
+	}, (source, args) => mutes.toggle(args.id, source, args.seconds ?? 900)), addCommand("voicedebug", {
+		help: Locale("COMMAND_DEBUG"),
+		restricted: !0
+	}, () => {
+		log$2.info(`backend ${router.backend}`);
+		for (let p of players.all()) log$2.info(`${p.source}: range ${p.distance} m (mode ${p.mode}) radio ${p.radio} [${[...p.radios].join(",")}] call ${p.call}${p.speaker ? " speaker" : ""}${p.muted ? " muted" : ""}`);
+		for (let line of [...groups.describe(), ...router.describe()]) log$2.info(line);
+	});
+}
+registerCommands(players, groups, mutes, router);
+// resource/server/join.ts
 function join(source) {
 	let mode = proximityBag.get(source)?.index, radio = radioBag.get(source) ?? 0, call = callBag.get(source) ?? 0;
 	players.join(source), mutes.join(source), mode !== void 0 && players.setMode(source, mode), radio > 0 && groups.setRadio(source, radio), call > 0 && groups.setCall(source, call, !0);
@@ -3085,6 +3118,7 @@ for (let id of getPlayers()) join(Number(id));
 on("playerJoining", () => join(eventSource())), players.onDrop((player) => {
 	speakers.drop(player), groups.drop(player);
 });
+// resource/server/groups/index.ts
 const recheck = (source) => {
 	typeof source == "number" && setTimeout(() => groups.recheck(source), 0);
 };
@@ -3093,10 +3127,14 @@ on(CORE.jobsChangedEvent, recheck), on(CORE.dutyChangedEvent, recheck), on(CORE.
 	unloaded: recheck
 }), content.onFrequencies(() => {
 	for (let player of players.all()) groups.recheck(player.source);
-}), content.onSettings((next, old) => {
-	JSON.stringify(next.modes) !== JSON.stringify(old.modes) && players.reload(), next.backend !== old.backend && log.warn("the voice backend changes on the next start of ai-voice");
 });
-const toIndex = ([v]) => asArgs(typeof v == "number" && Number.isInteger(v) && v >= 1 ? v : null), toRange = ([v]) => v == null ? [null] : typeof v == "number" && v >= .5 && v <= 100 ? [v] : null, toChannelArg = ([v]) => asArgs(isChannel(v) ? v : null), toBool = ([v]) => asArgs(typeof v == "boolean" ? v : null), perSecond = (count) => ({
+// resource/server/settingsChange.ts
+const log$1 = createLogger(ResourceName);
+content.onSettings((next, old) => {
+	JSON.stringify(next.modes) !== JSON.stringify(old.modes) && players.reload(), next.backend !== old.backend && log$1.warn("the voice backend changes on the next start of ai-voice");
+});
+// resource/server/clientRequests.ts
+const log = createLogger(ResourceName), toIndex = ([v]) => asArgs(typeof v == "number" && Number.isInteger(v) && v >= 1 ? v : null), toRange = ([v]) => v == null ? [null] : typeof v == "number" && v >= .5 && v <= 100 ? [v] : null, toChannelArg = ([v]) => asArgs(isChannel(v) ? v : null), toBool = ([v]) => asArgs(typeof v == "boolean" ? v : null), perSecond = (count) => ({
 	count,
 	windowMs: 1e3
 });
@@ -3127,4 +3165,4 @@ onClientEvent(EVENTS.setMode, {
 }), onClientEvent(EVENTS.setSpeaker, {
 	args: toBool,
 	rate: perSecond(2)
-}, (source, on) => speakers.set(source, on)), onStop(() => router.stop());
+}, (source, on) => speakers.set(source, on));

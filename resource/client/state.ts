@@ -7,16 +7,12 @@ import {
 } from "@aicore-fivem/lib/client";
 import { createLogger, isRecord } from "@aicore-fivem/lib/shared";
 import { PLAYER_BAGS } from "@aicore-fivem/shared";
-import {
-  KEYS,
-  parseBackend,
-  parseProximity,
-  parseTakeover,
-  readFrequency,
-  readSettings,
-  ResourceName,
-  type Settings,
-} from "common";
+import { KEYS, ResourceName } from "common";
+import { parseBackend } from "common/backend";
+import { readFrequency } from "common/frequency";
+import { parseProximity } from "common/proximity";
+import { readSettings, type Settings } from "common/settings";
+import { parseTakeover } from "common/takeover";
 
 export const log = createLogger(ResourceName);
 export const backendKey = new GlobalKey(KEYS.backend, parseBackend);

@@ -1,6 +1,7 @@
 import { GlobalKey, isResourceStarted } from "@aicore-fivem/lib/server";
 import { createLogger } from "@aicore-fivem/lib/shared";
-import { KEYS, parseTakeover, ResourceName, type Takeover } from "common";
+import { KEYS, ResourceName } from "common";
+import { parseTakeover, type Takeover } from "common/takeover";
 import { content } from "./content";
 
 const log = createLogger(ResourceName);
@@ -47,3 +48,5 @@ export function watchTakeover(): void {
   on("onResourceStart", changed);
   on("onResourceStop", changed);
 }
+
+watchTakeover();

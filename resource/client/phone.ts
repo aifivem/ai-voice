@@ -115,3 +115,5 @@ class Phone {
 }
 
 export const phone = new Phone();
+
+phone.start();

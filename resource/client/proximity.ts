@@ -55,3 +55,5 @@ class Proximity {
 }
 
 export const proximity = new Proximity();
+
+proximity.start();

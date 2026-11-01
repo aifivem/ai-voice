@@ -1,25 +1,19 @@
 import {
   cache,
-  fromServer,
   Keybind,
   medical,
   onServerEvent,
   TickLoop,
 } from "@aicore-fivem/lib/client";
-import { EVENTS, EXTERNAL, Locale, PMA } from "common";
+import { EVENTS, Locale, PMA } from "common";
 import { radioAnim } from "./anim";
 import { effects, micClick } from "./effects";
 import { isChannelId, isServerId, parseMembers } from "./members";
-import { mumble } from "./mumble";
-import { backendKey, deadBag, pmaDeadBag, state } from "./state";
+import { retarget } from "./retarget";
+import { deadBag, pmaDeadBag, state } from "./state";
 
 /** INPUT_PUSH_TO_TALK: held by script while the radio key is down, so the game transmits in push-to-talk mode too. */
 const PUSH_TO_TALK = 249;
-
-const isMumble = (): boolean => backendKey.get() === "mumble";
-const retarget = (): void => {
-  if (isMumble()) mumble.refreshPlayerTargets();
-};
 
 /** The radio: membership of every joined frequency from the server, push-to-talk on the active one, clicks, animation. */
 class Radio {
@@ -89,7 +83,6 @@ class Radio {
         state.radioChannel = channel;
       },
     );
-    this.watchExternal();
   }
 
   /** pma-voice `setRadioChannel`: the active frequency; 0 leaves every frequency. The server answers with the result. */
@@ -105,24 +98,6 @@ class Radio {
   /** Talk on another joined frequency. */
   setActive(channel: number): void {
     if (state.radios.has(channel)) emitNet(EVENTS.radioActive, channel);
-  }
-
-  /**
-   * tgiann-radio-v2 runs its own radio on Mumble: while its key is held its members stay in the voice target. Its
-   * local `pma-voice:syncRadioData` carries them (a server event to ai-voice always comes with a frequency).
-   */
-  private watchExternal(): void {
-    on(EXTERNAL.radioPressed, (pressed: unknown) => {
-      state.externalRadioPressed = pressed === true;
-      retarget();
-    });
-    on(PMA.syncRadioData, (members: unknown) => {
-      if (fromServer()) return;
-      state.externalRadio.clear();
-      for (const id of parseMembers(members)?.keys() ?? [])
-        state.externalRadio.add(id);
-      if (state.externalRadioPressed) retarget();
-    });
   }
 
   private radios(channel: number): Map<number, boolean> | undefined {
@@ -196,3 +171,5 @@ class Radio {
 }
 
 export const radio = new Radio();
+
+radio.start();

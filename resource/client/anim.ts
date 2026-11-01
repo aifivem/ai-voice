@@ -1,5 +1,8 @@
 import { cache, player } from "@aicore-fivem/lib/client";
-import { animOf, frequencyOf, PMA, type Anim } from "common";
+import { PMA } from "common";
+import type { Anim } from "common/anim";
+import { frequencyOf } from "common/frequency";
+import { animOf } from "common/settings";
 import { state } from "./state";
 
 /**

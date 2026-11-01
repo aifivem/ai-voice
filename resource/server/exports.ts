@@ -4,19 +4,17 @@ import {
   registerExport,
   stateString,
 } from "@aicore-fivem/lib/server";
-import {
-  KEYS,
-  RANGE_MAX,
-  RANGE_MIN,
-  toChannel,
-  type Proximity,
-} from "common/voice";
+import { toChannel } from "common/channel";
+import { RANGE_MAX, RANGE_MIN, type Proximity } from "common/proximity";
+import { KEYS } from "common/voice";
 import { checks } from "./checks";
-import type { Groups } from "./groups";
+import type { Groups } from "./groups/groups";
 import type { Mutes } from "./mute";
 import type { Players } from "./players";
-import type { Router } from "./router";
+import type { Router } from "./routing/router";
+import { router } from "./routing/backend";
 import type { Speakers } from "./speaker";
+import { groups, mutes, players, speakers } from "./state";
 
 // oxlint-disable-next-line typescript/no-explicit-any -- export arguments come from any resource; each is parsed below
 type Handler = (...args: any[]) => unknown;
@@ -166,3 +164,5 @@ export function registerServerExports(s: Services): void {
     submixBag.set(src, typeof name === "string" && name ? name : undefined);
   });
 }
+
+registerServerExports({ players, groups, mutes, router, speakers });

@@ -1,16 +1,8 @@
 import { every, type Job } from "@aicore-fivem/lib/server";
-import { createLogger } from "@aicore-fivem/lib/shared";
-import { ResourceName } from "common";
-import { VoiceChannel } from "./channel";
+import { Bucket } from "./bucket";
+import type { VoiceChannel } from "./channel";
+import { flatChannel, leaveFlatChannel } from "./flatChannels";
 import type { Router, Talker } from "./router";
-
-const log = createLogger(ResourceName);
-
-/** One routing bucket's proximity: a spatial channel per range in use, and who is in the bucket. */
-class Bucket {
-  readonly channels = new Map<number, VoiceChannel>();
-  readonly talkers = new Map<number, Talker>();
-}
 
 /**
  * FiveM for GTAV Enhanced: the server routes all audio.
@@ -40,7 +32,7 @@ export class EnhancedRouter implements Router {
     this.bucketOf.set(talker.source, bucketId);
     const bucket = this.bucket(bucketId);
     bucket.talkers.set(talker.source, talker);
-    this.channel(bucket, talker.distance);
+    bucket.channel(talker.distance);
     for (const [distance, channel] of bucket.channels)
       channel.add(talker.source, talker.muted || distance !== talker.distance);
   }
@@ -63,7 +55,7 @@ export class EnhancedRouter implements Router {
     const bucket = bucketId === undefined ? null : this.buckets.get(bucketId);
     if (bucketId === undefined || !bucket) return this.join(talker);
     bucket.talkers.set(talker.source, talker);
-    this.channel(bucket, talker.distance);
+    bucket.channel(talker.distance);
     for (const [distance, channel] of bucket.channels)
       channel.setMuted(
         talker.source,
@@ -78,11 +70,11 @@ export class EnhancedRouter implements Router {
   }
 
   radioJoin(source: number, channel: number): void {
-    this.group(this.radios, channel, "radio")?.add(source, true);
+    flatChannel(this.radios, channel, "radio")?.add(source, true);
   }
 
   radioLeave(source: number, channel: number): void {
-    this.leaveGroup(this.radios, channel, source);
+    leaveFlatChannel(this.radios, channel, source);
   }
 
   radioTalk(source: number, channel: number, talking: boolean): void {
@@ -92,11 +84,11 @@ export class EnhancedRouter implements Router {
 
   callJoin(source: number, channel: number): void {
     const muted = this.bucketTalker(source)?.muted ?? false;
-    this.group(this.calls, channel, "call")?.add(source, muted);
+    flatChannel(this.calls, channel, "call")?.add(source, muted);
   }
 
   callLeave(source: number, channel: number): void {
-    this.leaveGroup(this.calls, channel, source);
+    leaveFlatChannel(this.calls, channel, source);
   }
 
   callBystander(
@@ -154,16 +146,6 @@ export class EnhancedRouter implements Router {
       : this.buckets.get(id)?.talkers.get(source);
   }
 
-  /** The bucket's channel of a range; a new one takes every player of the bucket in, muted. */
-  private channel(bucket: Bucket, distance: number): void {
-    if (bucket.channels.has(distance)) return;
-    const channel = VoiceChannel.spatial(distance, `proximity ${distance}m`);
-    if (!channel) return log.error("voice channel limit reached");
-    bucket.channels.set(distance, channel);
-    for (const talker of bucket.talkers.values())
-      channel.add(talker.source, talker.muted || talker.distance !== distance);
-  }
-
   /** Drops channels of custom ranges nobody talks at, and empty buckets. */
   private prune(id: number, bucket: Bucket): void {
     if (bucket.talkers.size === 0) {
@@ -171,42 +153,7 @@ export class EnhancedRouter implements Router {
       this.buckets.delete(id);
       return;
     }
-    const keep = new Set(this.modeDistances());
-    for (const talker of bucket.talkers.values()) keep.add(talker.distance);
-    for (const [distance, channel] of bucket.channels) {
-      if (keep.has(distance)) continue;
-      channel.destroy();
-      bucket.channels.delete(distance);
-    }
-  }
-
-  private group(
-    map: Map<number, VoiceChannel>,
-    id: number,
-    kind: string,
-  ): VoiceChannel | null {
-    let channel = map.get(id) ?? null;
-    if (channel) return channel;
-    channel = VoiceChannel.flat(`${kind} ${id}`);
-    if (!channel) {
-      log.error("voice channel limit reached");
-      return null;
-    }
-    map.set(id, channel);
-    return channel;
-  }
-
-  private leaveGroup(
-    map: Map<number, VoiceChannel>,
-    id: number,
-    source: number,
-  ): void {
-    const channel = map.get(id);
-    if (!channel) return;
-    channel.remove(source);
-    if (channel.size > 0) return;
-    channel.destroy();
-    map.delete(id);
+    bucket.pruneChannels(this.modeDistances());
   }
 
   private watchBuckets(): void {

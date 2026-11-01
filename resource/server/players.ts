@@ -5,16 +5,12 @@ import {
   stateNumber,
 } from "@aicore-fivem/lib/server";
 import { PLAYER_BAGS } from "@aicore-fivem/shared";
-import {
-  CUSTOM_MODE,
-  KEYS,
-  parseProximity,
-  proximityOf,
-  type Proximity,
-} from "common/voice";
+import { CUSTOM_MODE, parseProximity, type Proximity } from "common/proximity";
+import { proximityOf } from "common/settings";
+import { KEYS } from "common/voice";
 import { checks } from "./checks";
 import { content } from "./content";
-import type { Router, Talker } from "./router";
+import type { Router, Talker } from "./routing/router";
 
 export const proximityBag = new PlayerState(
   PLAYER_BAGS.proximity,

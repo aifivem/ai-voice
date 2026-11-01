@@ -1,12 +1,7 @@
 import { AdminPanel } from "@aicore-fivem/lib/server";
 import { isRecord, num } from "@aicore-fivem/lib/shared";
-import {
-  frequencyOf,
-  readFrequency,
-  readSettings,
-  type Frequency,
-  type Settings,
-} from "common/voice";
+import { frequencyOf, readFrequency, type Frequency } from "common/frequency";
+import { readSettings, type Settings } from "common/settings";
 import { seedFromConvars } from "./convars";
 import { schema } from "./schema";
 

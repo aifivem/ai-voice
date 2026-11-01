@@ -1,9 +1,9 @@
 import { every, PlayerMap, playersNear } from "@aicore-fivem/lib/server";
 import { EVENTS } from "common";
 import { content } from "./content";
-import type { Groups } from "./groups";
+import type { Groups } from "./groups/groups";
 import { speakerBag, type Players, type VoicePlayer } from "./players";
-import type { Router } from "./router";
+import type { Router } from "./routing/router";
 
 /** What one client's loudspeaker audio is: whom to reach, whom to hear as a call or as a loudspeaker. */
 interface Audio {

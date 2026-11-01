@@ -1,7 +1,7 @@
 import { createLogger } from "@aicore-fivem/lib/shared";
 import { ResourceName } from "common";
 import type { AdminPanel } from "@aicore-fivem/lib/server";
-import { SETTINGS_DEFAULTS } from "./schema";
+import { SETTINGS_DEFAULTS } from "./schema/defaults";
 
 const log = createLogger(ResourceName);
 

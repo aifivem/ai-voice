@@ -1,16 +1,11 @@
 import { notify } from "@aicore-fivem/lib/server";
 import { Locale, PMA } from "common";
-import { checks } from "./checks";
-import { content } from "./content";
-import { callBag, radioBag, type Players, type VoicePlayer } from "./players";
-import type { Router } from "./router";
-
-/** Members of one channel: server id -> talking on it (calls keep false). */
-type Members = Map<number, boolean>;
-
-/** pma-voice's member table as an object (msgpack keys arrive as strings; clients read them with Number()). */
-const table = (members: Members): Record<string, boolean> =>
-  Object.fromEntries(members);
+import { checks } from "../checks";
+import { content } from "../content";
+import { callBag, radioBag, type Players, type VoicePlayer } from "../players";
+import type { Router } from "../routing/router";
+import { CallMembers } from "./calls";
+import { describeMembers, table, type Members } from "./members";
 
 /**
  * Radio frequencies and phone calls: who is on which, with pma-voice's events so third-party radio and phone UIs
@@ -20,14 +15,16 @@ const table = (members: Members): Record<string, boolean> =>
  */
 export class Groups {
   private readonly radios = new Map<number, Members>();
-  private readonly calls = new Map<number, Members>();
+  private readonly calls: CallMembers;
   private readonly callListeners: Array<(source: number, old: number) => void> =
     [];
 
   constructor(
     private readonly players: Players,
     private readonly router: Router,
-  ) {}
+  ) {
+    this.calls = new CallMembers(router);
+  }
 
   /** pma-voice `setPlayerRadio`: the active frequency (replaces the old active one); 0 leaves every frequency. */
   setRadio(source: number, channel: number): void {
@@ -95,9 +92,9 @@ export class Groups {
     if (fromScript) emitNet(PMA.clSetPlayerCall, source, channel);
     if (player.call === channel) return;
     const old = player.call;
-    if (old !== 0) this.leaveCall(source, old);
+    if (old !== 0) this.calls.leave(source, old);
     player.call = channel;
-    if (channel !== 0) this.joinCall(source, channel);
+    if (channel !== 0) this.calls.join(source, channel);
     callBag.set(source, channel);
     for (const listener of this.callListeners) listener(source, old);
   }
@@ -113,7 +110,7 @@ export class Groups {
 
   /** Members of a call (empty when none). */
   callMembers(channel: number): ReadonlyMap<number, boolean> {
-    return this.calls.get(channel) ?? new Map();
+    return this.calls.members(channel);
   }
 
   /** pma-voice `getPlayersInRadioChannel`: `{ [source]: talking }`. */
@@ -138,13 +135,11 @@ export class Groups {
   /** The player left: tell the members of their frequencies and call. */
   drop(player: VoicePlayer): void {
     for (const channel of player.radios) this.leaveRadio(player, channel);
-    if (player.call !== 0) this.leaveCall(player.source, player.call);
+    if (player.call !== 0) this.calls.leave(player.source, player.call);
   }
 
   describe(): string[] {
-    const line = (kind: string, map: Map<number, Members>) =>
-      [...map].map(([id, m]) => `${kind} ${id}: ${[...m.keys()].join(",")}`);
-    return [...line("radio", this.radios), ...line("call", this.calls)];
+    return [...describeMembers("radio", this.radios), ...this.calls.describe()];
   }
 
   /** The frequency push-to-talk sends on; the client is always told (it never guesses). */
@@ -186,25 +181,5 @@ export class Groups {
     members.delete(player.source);
     if (members.size === 0) this.radios.delete(channel);
     this.router.radioLeave(player.source, channel);
-  }
-
-  private joinCall(source: number, channel: number): void {
-    let members = this.calls.get(channel);
-    if (!members) this.calls.set(channel, (members = new Map()));
-    for (const member of members.keys())
-      emitNet(PMA.addPlayerToCall, member, source);
-    members.set(source, false);
-    emitNet(PMA.syncCallData, source, table(members));
-    this.router.callJoin(source, channel);
-  }
-
-  private leaveCall(source: number, channel: number): void {
-    const members = this.calls.get(channel);
-    if (!members) return;
-    for (const member of members.keys())
-      emitNet(PMA.removePlayerFromCall, member, source);
-    members.delete(source);
-    if (members.size === 0) this.calls.delete(channel);
-    this.router.callLeave(source, channel);
   }
 }

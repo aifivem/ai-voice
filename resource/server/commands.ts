@@ -1,10 +1,12 @@
 import { addCommand } from "@aicore-fivem/lib/server";
 import { createLogger } from "@aicore-fivem/lib/shared";
 import { Locale, ResourceName } from "common";
-import type { Groups } from "./groups";
+import type { Groups } from "./groups/groups";
 import type { Mutes } from "./mute";
 import type { Players } from "./players";
-import type { Router } from "./router";
+import { router } from "./routing/backend";
+import type { Router } from "./routing/router";
+import { groups, mutes, players } from "./state";
 
 const log = createLogger(ResourceName);
 
@@ -47,3 +49,5 @@ export function registerCommands(
     },
   );
 }
+
+registerCommands(players, groups, mutes, router);
