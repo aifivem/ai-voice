@@ -266,6 +266,9 @@ const CORE = {
 	activeGangChangedEvent: "ai-core:activeGangChanged",
 	metaChangedEvent: "ai-core:metaChanged",
 	definitionsChangedEvent: "ai-core:definitionsChanged",
+	characterDeletedEvent: "ai-core:characterDeleted",
+	runtimeJobPrefix: "ai:jobdef:",
+	runtimeGangPrefix: "ai:gangdef:",
 	characterScreenEvent: "ai-core:characterScreen",
 	inventoryChangedEvent: "ai-core:inventoryChanged",
 	itemUsedEvent: "ai-core:itemUsed",
@@ -296,7 +299,11 @@ const CORE = {
 	spawnEvent: "ai-core:client:spawn",
 	chooseSpawnEvent: "ai-core:client:chooseSpawn",
 	spawnChoiceCallback: "ai-core:spawnChoice",
-	openCharactersEvent: "ai-core:client:openCharacters"
+	openCharactersEvent: "ai-core:client:openCharacters",
+	characterScreenKey: "ai:characterScreen",
+	externalLoadedEvent: "ai-core:client:externalLoaded",
+	externalSpawnedEvent: "ai-core:externalSpawned",
+	externalLogoutEvent: "ai-core:client:externalLogout"
 }, PLAYER_BAGS = {
 	dead: "dead",
 	cuffed: "cuffed",
@@ -482,7 +489,7 @@ function toPatch(value) {
 		default: return null;
 	}
 }
-const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(value)), core$24 = resourceExport(CORE.resource), ERR = {
+const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(value)), core$25 = resourceExport(CORE.resource), ERR = {
 	type: "ADMIN_ERR_TYPE",
 	range: "ADMIN_ERR_RANGE",
 	length: "ADMIN_ERR_LENGTH",
@@ -496,7 +503,7 @@ const clone = (value) => value === void 0 ? value : JSON.parse(JSON.stringify(va
 		if (cached && Date.now() - cached.at < 2e3) return cached.values.size > 0 ? cached.values : null;
 		let list = [];
 		try {
-			list = core$24.GetLookupValues(source);
+			list = core$25.GetLookupValues(source);
 		} catch {}
 		let values = new Set(Array.isArray(list) ? list.filter((v) => typeof v == "string") : []);
 		return this.lists.set(source, {
@@ -761,7 +768,7 @@ function writeSchema(resource, name, text, log) {
 	(0, node_fs_promises.mkdir)(dir, { recursive: !0 }).then(() => (0, node_fs_promises.writeFile)(`${dir}/${name}.schema.json`, text, "utf8")).catch((error) => log.error(`writing ${resource}/${path} failed`, error));
 }
 // ../../../packages/lib/src/server/admin/panel.ts
-const core$23 = resourceExport(CORE.resource);
+const core$24 = resourceExport(CORE.resource);
 var AdminPanel = class {
 	schema;
 	data = new Map();
@@ -780,7 +787,7 @@ var AdminPanel = class {
 		registerExport("AdminPanelSnapshot", () => this.snapshot()), registerExport("AdminPanelData", () => this.dataSnapshot()), registerExport("AdminPanelSummary", () => this.summary()), registerExport("AdminPanelApply", (admin, patch) => this.apply(admin, patch)), onClientCallback(ADMIN.worldChangesCallback(this.resource), () => Object.fromEntries(this.worldChanges), { rate: {
 			count: 4,
 			windowMs: 1e4
-		} }), setImmediate(() => core$23.RegisterAdminPanel(this.resource));
+		} }), setImmediate(() => core$24.RegisterAdminPanel(this.resource));
 	}
 	get(file) {
 		return this.data.get(file) ?? {};
@@ -894,7 +901,7 @@ var AdminPanel = class {
 		let spec = this.schema.files[file], data = this.get(file), value = key === void 0 ? data : data[key] ?? null;
 		this.dataFiles.get(file)?.write(data), this.views.changed(file, key, value);
 		for (let handler of this.handlers.get(file) ?? []) handler(key, value);
-		if (core$23.AdminPanelChanged({
+		if (core$24.AdminPanelChanged({
 			resource: this.resource,
 			file,
 			key,
@@ -932,17 +939,18 @@ function aiLogChannels(channels) {
 	optionalExport("ai-core")?.LogChannels(channels);
 }
 // ../../../packages/lib/src/server/notify.ts
-function notify(source, text, kind = "info", duration) {
+function notify(source, text, kind = "info", duration, title) {
 	let notification = {
 		text,
 		kind,
-		duration
+		duration,
+		title
 	};
 	emitNet(LIB_UI.notifyEvent, source, notification);
 }
 resourceExport(CORE.resource);
 // ../../../packages/lib/src/server/online.ts
-const core$21 = resourceExport(CORE.resource);
+const core$22 = resourceExport(CORE.resource);
 function reindex(index, source, before, after) {
 	for (let name of before) {
 		let set = index.get(name);
@@ -970,11 +978,11 @@ var OnlinePlayers = class {
 				gangs: [],
 				gangNames: [],
 				duty: null
-			}), this.setJobs(source, core$21.GetJobs(source) ?? []), this.setGangs(source, core$21.GetGangs(source) ?? []), this.setDuty(source, core$21.GetDutyJob(source));
+			}), this.setJobs(source, core$22.GetJobs(source) ?? []), this.setGangs(source, core$22.GetGangs(source) ?? []), this.setDuty(source, core$22.GetDutyJob(source));
 		};
 		on(CORE.playerLoadedEvent, load), on(CORE.playerUnloadedEvent, (source) => this.drop(source)), on(CORE.jobsChangedEvent, (source, jobs) => this.setJobs(source, jobs)), on(CORE.gangsChangedEvent, (source, gangs) => this.setGangs(source, gangs)), on(CORE.dutyChangedEvent, (source, job) => this.setDuty(source, job));
-		for (let source of core$21.GetLoadedSources()) {
-			let character = core$21.GetCharacter(source);
+		for (let source of core$22.GetLoadedSources()) {
+			let character = core$22.GetCharacter(source);
 			character && load(source, character);
 		}
 	}
@@ -1073,7 +1081,7 @@ var OnlinePlayers = class {
 const EMPTY = new Set(), online = new OnlinePlayers();
 resourceExport(CORE.resource), resourceExport(CORE.resource);
 // ../../../packages/lib/src/server/proximity.ts
-const core$18 = resourceExport(CORE.resource);
+const core$19 = resourceExport(CORE.resource);
 function within(point, radius, candidates) {
 	let out = [];
 	for (let source of candidates) {
@@ -1083,7 +1091,7 @@ function within(point, radius, candidates) {
 	return out;
 }
 function playersNear(source, radius) {
-	return within(coordsOf(source), radius, [source, ...core$18.GetPlayersInScope(source)]);
+	return within(coordsOf(source), radius, [source, ...core$19.GetPlayersInScope(source)]);
 }
 // ../../../packages/lib/src/server/players.ts
 const log$10 = createLogger(GetCurrentResourceName()), dropped = new Set();
@@ -1139,7 +1147,7 @@ on(CORE.playerUnloadedEvent, (source) => {
 	settle && settle(!1);
 });
 // ../../../packages/lib/src/server/definitions.ts
-const core$17 = resourceExport("ai-core");
+const core$18 = resourceExport("ai-core");
 new class {
 	jobs = new Map();
 	gangs = new Map();
@@ -1150,11 +1158,23 @@ new class {
 	}
 	job(name) {
 		let def = this.jobs.get(name);
-		return def === void 0 && this.jobs.set(name, def = core$17.GetJobDefinition(name) ?? null), def;
+		return def === void 0 && this.jobs.set(name, def = core$18.GetJobDefinition(name) ?? null), def;
+	}
+	registerJob(name, definition) {
+		return core$18.RegisterJobDefinition(name, definition);
+	}
+	removeJob(name) {
+		return core$18.RemoveJobDefinition(name);
+	}
+	registerGang(name, definition) {
+		return core$18.RegisterGangDefinition(name, definition);
+	}
+	removeGang(name) {
+		return core$18.RemoveGangDefinition(name);
 	}
 	gang(name) {
 		let def = this.gangs.get(name);
-		return def === void 0 && this.gangs.set(name, def = core$17.GetGangDefinition(name) ?? null), def;
+		return def === void 0 && this.gangs.set(name, def = core$18.GetGangDefinition(name) ?? null), def;
 	}
 }();
 // ../../../packages/lib/src/server/command.ts
@@ -1535,7 +1555,7 @@ var PlayerState$1 = class extends Mirror {
 		GlobalState.set(this.key, value ?? null, !0), this.put(value);
 	}
 };
-resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource);
+resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource), resourceExport(CORE.resource);
 // ../../../packages/lib/src/server/index.ts
 function eventSource() {
 	return Number(globalThis.source);
