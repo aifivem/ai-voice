@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/aifivem/ai-voice/compare/v0.1.2...v0.1.3) (2026-11-01)
+
+
+### Code Refactoring
+
+* feature folders, side entries that only import, panel schema per tab ([0ba39c8](https://github.com/aifivem/ai-voice/commit/0ba39c8433b5b7a1227cbb040cb1d0905cb5e78a))
+
 ## [0.1.2](https://github.com/aifivem/ai-voice/compare/v0.1.1...v0.1.2) (2026-10-31)
 
 
