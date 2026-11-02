@@ -1,4 +1,4 @@
-import { bool, int, isRecord, num, str } from "@aicore-fivem/lib/shared";
+import { bool, int, isRecord, num, str } from "@aifivem/lib/shared";
 import { ANIM_SET_NAMES, ANIM_SETS, type Anim, type AnimSetName } from "./anim";
 import type { BackendSetting } from "./backend";
 import { RANGE_MAX, RANGE_MIN, type Proximity } from "./proximity";

@@ -3,7 +3,7 @@ import {
   aiLogChannels,
   notify,
   PlayerMap,
-} from "@aicore-fivem/lib/server";
+} from "@aifivem/lib/server";
 import { Locale, PMA } from "common";
 import type { Players } from "./players";
 

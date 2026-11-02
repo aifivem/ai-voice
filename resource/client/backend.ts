@@ -1,4 +1,4 @@
-import { waitFor } from "@aicore-fivem/lib/shared";
+import { waitFor } from "@aifivem/lib/shared";
 import { effects } from "./effects";
 import { mumble } from "./mumble";
 import { backendKey, log } from "./state";

@@ -1,4 +1,4 @@
-import type { CardSpec } from "@aicore-fivem/shared";
+import type { CardSpec } from "@aifivem/shared";
 import { animOptions, pct } from "./widgets";
 
 export const radioCard: CardSpec = {

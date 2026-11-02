@@ -3,7 +3,7 @@ import {
   provideExport,
   registerExport,
   stateString,
-} from "@aicore-fivem/lib/server";
+} from "@aifivem/lib/server";
 import { toChannel } from "common/channel";
 import { RANGE_MAX, RANGE_MIN, type Proximity } from "common/proximity";
 import { KEYS } from "common/voice";

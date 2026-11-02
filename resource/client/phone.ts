@@ -1,5 +1,5 @@
-import { cache, onServerEvent } from "@aicore-fivem/lib/client";
-import { isRecord } from "@aicore-fivem/lib/shared";
+import { cache, onServerEvent } from "@aifivem/lib/client";
+import { isRecord } from "@aifivem/lib/shared";
 import { EVENTS, EXTERNAL, PMA } from "common";
 import { effects } from "./effects";
 import { isChannelId, isServerId, parseMembers } from "./members";

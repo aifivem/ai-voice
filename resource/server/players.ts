@@ -3,8 +3,8 @@ import {
   PlayerState,
   stateBoolean,
   stateNumber,
-} from "@aicore-fivem/lib/server";
-import { PLAYER_BAGS } from "@aicore-fivem/shared";
+} from "@aifivem/lib/server";
+import { PLAYER_BAGS } from "@aifivem/shared";
 import { CUSTOM_MODE, parseProximity, type Proximity } from "common/proximity";
 import { proximityOf } from "common/settings";
 import { KEYS } from "common/voice";

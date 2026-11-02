@@ -1,4 +1,4 @@
-import type { CardSpec } from "@aicore-fivem/shared";
+import type { CardSpec } from "@aifivem/shared";
 import { RANGE_MAX, RANGE_MIN } from "common/proximity";
 
 export const backendCard: CardSpec = {

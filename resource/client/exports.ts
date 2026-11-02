@@ -1,4 +1,4 @@
-import { provideExport, registerExport } from "@aicore-fivem/lib/client";
+import { provideExport, registerExport } from "@aifivem/lib/client";
 import { toChannel } from "common/channel";
 import { radioAnim } from "./anim";
 import { effects } from "./effects";

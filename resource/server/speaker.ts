@@ -1,4 +1,4 @@
-import { every, PlayerMap, playersNear } from "@aicore-fivem/lib/server";
+import { every, PlayerMap, playersNear } from "@aifivem/lib/server";
 import { EVENTS } from "common";
 import { content } from "./content";
 import type { Groups } from "./groups/groups";

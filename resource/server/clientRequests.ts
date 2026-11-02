@@ -1,5 +1,5 @@
-import { onClientEvent } from "@aicore-fivem/lib/server";
-import { asArgs, createLogger } from "@aicore-fivem/lib/shared";
+import { onClientEvent } from "@aifivem/lib/server";
+import { asArgs, createLogger } from "@aifivem/lib/shared";
 import { ResourceName } from "common";
 import { isChannel } from "common/channel";
 import { RANGE_MAX, RANGE_MIN } from "common/proximity";

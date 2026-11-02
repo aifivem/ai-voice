@@ -1,4 +1,4 @@
-import { isRecord } from "@aicore-fivem/lib/shared";
+import { isRecord } from "@aifivem/lib/shared";
 
 /** A pma-voice member table from the server (`{ [serverId]: talking }`, keys arrive as strings). */
 export function parseMembers(value: unknown): Map<number, boolean> | null {

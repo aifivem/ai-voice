@@ -1,4 +1,4 @@
-import { createLogger } from "@aicore-fivem/lib/shared";
+import { createLogger } from "@aifivem/lib/shared";
 import { ResourceName } from "common";
 import { VoiceChannel } from "./channel";
 

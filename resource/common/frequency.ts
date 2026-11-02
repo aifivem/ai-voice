@@ -5,7 +5,7 @@ import {
   str,
   type AccessRule,
   type RecordReader,
-} from "@aicore-fivem/lib/shared";
+} from "@aifivem/lib/shared";
 
 /** A frequency span of the panel: optional access rule, optional animation. */
 export interface Frequency {

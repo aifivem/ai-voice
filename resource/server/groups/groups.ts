@@ -1,4 +1,4 @@
-import { notify } from "@aicore-fivem/lib/server";
+import { notify } from "@aifivem/lib/server";
 import { Locale, PMA } from "common";
 import { checks } from "../checks";
 import { content } from "../content";

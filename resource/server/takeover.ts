@@ -1,5 +1,5 @@
-import { GlobalKey, isResourceStarted } from "@aicore-fivem/lib/server";
-import { createLogger } from "@aicore-fivem/lib/shared";
+import { GlobalKey, isResourceStarted } from "@aifivem/lib/server";
+import { createLogger } from "@aifivem/lib/shared";
 import { KEYS, ResourceName } from "common";
 import { parseTakeover, type Takeover } from "common/takeover";
 import { content } from "./content";

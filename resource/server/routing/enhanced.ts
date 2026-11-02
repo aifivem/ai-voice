@@ -1,4 +1,4 @@
-import { every, type Job } from "@aicore-fivem/lib/server";
+import { every, type Job } from "@aifivem/lib/server";
 import { Bucket } from "./bucket";
 import type { VoiceChannel } from "./channel";
 import { flatChannel, leaveFlatChannel } from "./flatChannels";

@@ -1,4 +1,4 @@
-import type { PanelSchema } from "@aicore-fivem/shared";
+import type { PanelSchema } from "@aifivem/shared";
 import { channelsFile, channelsTab } from "./channels";
 import { settingsFile, settingsTab } from "./settings";
 

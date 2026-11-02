@@ -1,4 +1,4 @@
-import { isRecord } from "@aicore-fivem/lib/shared";
+import { isRecord } from "@aifivem/lib/shared";
 
 /** pma-voice's `proximity` bag: `index` is 1-based like pma's voice modes. */
 export interface Proximity {

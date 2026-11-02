@@ -1,5 +1,5 @@
-import { ByResource, caller, online } from "@aicore-fivem/lib/server";
-import { createLogger } from "@aicore-fivem/lib/shared";
+import { ByResource, caller, online } from "@aifivem/lib/server";
+import { createLogger } from "@aifivem/lib/shared";
 import { ResourceName } from "common";
 import { content } from "./content";
 

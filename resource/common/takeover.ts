@@ -1,4 +1,4 @@
-import { isRecord } from "@aicore-fivem/lib/shared";
+import { isRecord } from "@aifivem/lib/shared";
 
 /** The running scripts that apply their own radio / phone effect (resource names), null = ai-voice's. */
 export interface Takeover {

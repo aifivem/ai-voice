@@ -1,5 +1,5 @@
-import { ACCESS_FIELDS, accessFields } from "@aicore-fivem/lib/shared";
-import type { FileSpec, TabSpec } from "@aicore-fivem/shared";
+import { ACCESS_FIELDS, accessFields } from "@aifivem/lib/shared";
+import type { FileSpec, TabSpec } from "@aifivem/shared";
 import { ANIM_SET_NAMES } from "common/anim";
 import { CHANNEL_MAX } from "common/channel";
 import { animOptions } from "./widgets";
