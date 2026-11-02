@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/aifivem/ai-voice/compare/v0.1.3...v0.1.4) (2026-11-02)
+
+
+### Code Refactoring
+
+* import the shared packages from [@aifivem](https://github.com/aifivem) ([96a9dff](https://github.com/aifivem/ai-voice/commit/96a9dffd8476c943edae35f704b7949ab971b271))
+
 ## [0.1.3](https://github.com/aifivem/ai-voice/compare/v0.1.2...v0.1.3) (2026-11-01)
 
 
