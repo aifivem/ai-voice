@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.5](https://github.com/aifivem/ai-voice/compare/v0.1.4...v0.1.5) (2026-11-02)
+
+
+### Documentation
+
+* install from the release zip ([6309fd7](https://github.com/aifivem/ai-voice/commit/6309fd7bfda5e68cc21e843db8bef2b655fc6fca))
+
+
+### Miscellaneous Chores
+
+* build files are no longer in git, the release zip carries them ([6112a60](https://github.com/aifivem/ai-voice/commit/6112a6020a9b5d37a96cc6d16f882f702bb2521c))
+
 ## [0.1.4](https://github.com/aifivem/ai-voice/compare/v0.1.3...v0.1.4) (2026-11-02)
 
 
